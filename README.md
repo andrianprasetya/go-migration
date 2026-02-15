@@ -32,6 +32,7 @@ package main
 import (
     "database/sql"
     "log"
+    "os"
     
     "github.com/andrianprasetya/go-migration"
     _ "github.com/lib/pq" // PostgreSQL driver
@@ -39,7 +40,8 @@ import (
 
 func main() {
     // Open database connection
-    db, err := sql.Open("postgres", "postgres://user:password@localhost/dbname?sslmode=disable")
+    // Use environment variables for sensitive data
+    db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
     if err != nil {
         log.Fatal(err)
     }
