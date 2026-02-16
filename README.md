@@ -2,19 +2,23 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/andrianprasetya/go-migration.svg)](https://pkg.go.dev/github.com/andrianprasetya/go-migration)
 [![Go Report Card](https://goreportcard.com/badge/github.com/andrianprasetya/go-migration)](https://goreportcard.com/report/github.com/andrianprasetya/go-migration)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A simple and lightweight database migration library for Go applications.
+A Laravel-inspired database migration and seeding system for Go. Struct-based migrations, fluent schema builder, factory-based seeders with faker, batch tracking, hooks, and multi-database support — works with any framework or standalone.
 
 ## Features
 
-- 🚀 Simple and easy to use API
-- 📦 Support for multiple database drivers
-- 🔄 Up and down migrations
-- 📝 SQL and Go-based migrations
-- 🔍 Migration history tracking
-- ⚡ Fast and lightweight
-- 🧪 Well-tested and reliable
+- Struct-based migrations with `Up()` / `Down()` methods — type-safe, no raw SQL files
+- Fluent schema builder for tables, columns, indexes, and foreign keys
+- Per-migration transactions with opt-out support
+- Batch tracking and granular rollback (by batch or step count)
+- Before/after migration hooks
+- Seeder system with dependency resolution and circular dependency detection
+- Generic factory pattern with faker for realistic test data
+- Multi-database connection management with pooling
+- CLI with Laravel-style commands (`migrate`, `migrate:rollback`, `make:migration`, `db:seed`, etc.)
+- Grammars for PostgreSQL, MySQL, and SQLite
+- Framework-agnostic — depends only on `database/sql`
 
 ## Installation
 
@@ -24,7 +28,33 @@ go get github.com/andrianprasetya/go-migration
 
 ## Quick Start
 
-### Basic Usage
+### Define a migration
+
+```go
+package main
+
+import (
+    "github.com/andrianprasetya/go-migration/pkg/schema"
+)
+
+type CreateUsersTable struct{}
+
+func (m *CreateUsersTable) Up(s *schema.Builder) error {
+    return s.Create("users", func(bp *schema.Blueprint) {
+        bp.ID()
+        bp.String("name", 255)
+        bp.String("email", 255).Unique()
+        bp.Boolean("active").Default(true)
+        bp.Timestamps()
+    })
+}
+
+func (m *CreateUsersTable) Down(s *schema.Builder) error {
+    return s.Drop("users")
+}
+```
+
+### Register and run migrations
 
 ```go
 package main
@@ -32,152 +62,314 @@ package main
 import (
     "database/sql"
     "log"
-    "os"
-    
-    "github.com/andrianprasetya/go-migration"
-    _ "github.com/lib/pq" // PostgreSQL driver
+
+    _ "github.com/lib/pq"
+    "github.com/andrianprasetya/go-migration/pkg/migrator"
+    "github.com/andrianprasetya/go-migration/pkg/schema/grammars"
 )
 
 func main() {
-    // Open database connection
-    // Use environment variables for sensitive data
-    db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+    db, err := sql.Open("postgres", "postgres://user:pass@localhost/mydb?sslmode=disable")
     if err != nil {
         log.Fatal(err)
     }
     defer db.Close()
-    
-    // Create migration instance
-    m := migration.New(db)
-    
-    // Run migrations
+
+    m := migrator.New(db, migrator.WithGrammar(&grammars.PostgresGrammar{}))
+
+    // Register migrations
+    m.Register("20260101120000_create_users", &CreateUsersTable{})
+
+    // Run all pending migrations
     if err := m.Up(); err != nil {
         log.Fatal(err)
     }
-    
-    log.Println("Migrations applied successfully!")
 }
 ```
 
-### Creating Migrations
+## Schema Builder
 
-Create a new migration file:
+The schema builder provides a fluent, database-agnostic API for defining tables:
+
+```go
+// Create table
+s.Create("posts", func(bp *schema.Blueprint) {
+    bp.ID()
+    bp.String("title", 255)
+    bp.Text("body").Nullable()
+    bp.BigInteger("author_id").Unsigned()
+    bp.Decimal("rating", 3, 2).Default(0)
+    bp.Boolean("published").Default(false)
+    bp.JSON("metadata").Nullable()
+    bp.Timestamps()
+    bp.SoftDeletes()
+
+    // Indexes
+    bp.Index("title")
+    bp.UniqueIndex("title", "author_id")
+
+    // Foreign keys
+    bp.Foreign("author_id").References("id").On("users").OnDelete("CASCADE")
+})
+
+// Alter table
+s.Alter("posts", func(bp *schema.Blueprint) {
+    bp.String("slug", 255).Unique()
+    bp.DropColumn("metadata")
+})
+
+// Other operations
+s.Drop("posts")
+s.DropIfExists("posts")
+s.Rename("posts", "articles")
+s.HasTable("posts")       // bool, error
+s.HasColumn("posts", "id") // bool, error
+```
+
+### Supported column types
+
+`ID`, `String`, `Text`, `Integer`, `BigInteger`, `Boolean`, `Timestamp`, `Date`, `Decimal`, `Float`, `UUID`, `JSON`, `Binary`
+
+### Column modifiers
+
+`.Nullable()`, `.Default(value)`, `.Primary()`, `.Unique()`, `.Unsigned()`, `.AutoIncrement()`
+
+## Migrator API
+
+```go
+m := migrator.New(db,
+    migrator.WithGrammar(&grammars.PostgresGrammar{}),
+    migrator.WithTableName("migrations"),  // default: "migrations"
+    migrator.WithLogger(myLogger),
+)
+
+m.Register("20260101120000_create_users", &CreateUsersTable{})
+
+m.Up()              // Run all pending migrations
+m.Rollback(0)       // Rollback last batch
+m.Rollback(3)       // Rollback last 3 migrations
+m.Reset()           // Rollback all migrations
+m.Refresh()         // Reset + Up
+m.Fresh()           // Drop all tables + Up (requires grammar)
+m.Status()          // []MigrationStatus
+```
+
+### Transaction opt-out
+
+By default every migration runs in a transaction. To opt out, implement `TransactionOption`:
+
+```go
+type LargeDataMigration struct{}
+
+func (m *LargeDataMigration) DisableTransaction() bool { return true }
+func (m *LargeDataMigration) Up(s *schema.Builder) error   { /* ... */ return nil }
+func (m *LargeDataMigration) Down(s *schema.Builder) error { /* ... */ return nil }
+```
+
+### Hooks
+
+```go
+m.BeforeMigrate(func(name, direction string) error {
+    log.Printf("About to run %s (%s)", name, direction)
+    return nil
+})
+
+m.AfterMigrate(func(name, direction string, duration time.Duration) error {
+    log.Printf("Completed %s (%s) in %v", name, direction, duration)
+    return nil
+})
+```
+
+## Seeder System
+
+```go
+import "github.com/andrianprasetya/go-migration/pkg/seeder"
+
+type UserSeeder struct{}
+
+func (s *UserSeeder) Run(db *sql.DB) error {
+    _, err := db.Exec("INSERT INTO users (name, email) VALUES ($1, $2)", "Alice", "alice@example.com")
+    return err
+}
+
+// Optional: declare dependencies
+type PostSeeder struct{}
+
+func (s *PostSeeder) Run(db *sql.DB) error { /* ... */ return nil }
+func (s *PostSeeder) DependsOn() []string  { return []string{"UserSeeder"} }
+```
+
+```go
+reg := seeder.NewRegistry()
+reg.Register("UserSeeder", &UserSeeder{})
+reg.Register("PostSeeder", &PostSeeder{})
+
+runner := seeder.NewRunner(reg, db, nil)
+runner.RunAll()           // Runs all seeders in dependency order
+runner.Run("PostSeeder")  // Runs PostSeeder and its dependencies
+```
+
+### Factory + Faker
+
+```go
+import "github.com/andrianprasetya/go-migration/pkg/seeder/factory"
+
+type User struct {
+    Name  string
+    Email string
+    Age   int
+}
+
+f := factory.NewFactory(func(fake factory.Faker) User {
+    return User{
+        Name:  fake.Name(),
+        Email: fake.Email(),
+        Age:   fake.IntBetween(18, 65),
+    }
+})
+
+user := f.Make()          // Single instance
+users := f.MakeMany(10)   // Slice of 10
+
+// Named states
+f.State("admin", func(fake factory.Faker, base User) User {
+    base.Name = "Admin " + base.Name
+    return base
+})
+admin := f.WithState("admin").Make()
+```
+
+## Multi-Database Connections
+
+```go
+import "github.com/andrianprasetya/go-migration/pkg/database"
+import "github.com/andrianprasetya/go-migration/pkg/database/drivers"
+
+mgr := database.NewManager()
+mgr.RegisterDriver("postgres", &drivers.PostgresDriver{})
+mgr.RegisterDriver("mysql", &drivers.MySQLDriver{})
+
+mgr.AddConnection("primary", database.ConnectionConfig{
+    Driver:   "postgres",
+    Host:     "localhost",
+    Port:     5432,
+    Database: "myapp",
+    Username: "user",
+    Password: "pass",
+})
+
+mgr.AddConnection("analytics", database.ConnectionConfig{
+    Driver:   "mysql",
+    Host:     "localhost",
+    Port:     3306,
+    Database: "analytics",
+    Username: "user",
+    Password: "pass",
+})
+
+mgr.SetDefault("primary")
+
+db, _ := mgr.Connection("primary")
+analyticsDB, _ := mgr.Connection("analytics")
+defer mgr.Close()
+```
+
+## CLI
+
+The package includes a CLI built with Cobra. Build it from `cmd/migrator/`:
 
 ```bash
-migration create create_users_table
+go build -o migrator ./cmd/migrator
 ```
 
-This will create two files:
-- `migrations/YYYYMMDDHHMMSS_create_users_table.up.sql`
-- `migrations/YYYYMMDDHHMMSS_create_users_table.down.sql`
+Available commands:
 
-Example migration files:
+| Command | Description |
+|---|---|
+| `migrate` | Run all pending migrations |
+| `migrate:rollback` | Rollback last batch (use `--step N` for N migrations) |
+| `migrate:reset` | Rollback all migrations |
+| `migrate:refresh` | Reset + migrate up |
+| `migrate:fresh` | Drop all tables + migrate up |
+| `migrate:status` | Show migration status |
+| `migrate:install` | Create the migration tracking table |
+| `make:migration` | Generate a migration file (`--create` or `--table` flags) |
+| `make:seeder` | Generate a seeder file |
+| `db:seed` | Run seeders (`--class` flag for specific seeder) |
 
-**Up migration** (`YYYYMMDDHHMMSS_create_users_table.up.sql`):
-```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+```bash
+# Run migrations
+./migrator migrate --config config.yaml
+
+# Generate a migration with create-table scaffolding
+./migrator make:migration create_orders --create orders
+
+# Generate a migration with alter-table scaffolding
+./migrator make:migration add_status_to_orders --table orders
+
+# Rollback last 2 migrations
+./migrator migrate:rollback --step 2
+
+# Seed the database
+./migrator db:seed
+./migrator db:seed --class UserSeeder
 ```
-
-**Down migration** (`YYYYMMDDHHMMSS_create_users_table.down.sql`):
-```sql
-DROP TABLE IF EXISTS users;
-```
-
-## API Reference
-
-### Migration Methods
-
-- `New(db *sql.DB) *Migrator` - Create a new migration instance
-- `Up() error` - Run all pending up migrations
-- `Down() error` - Run one down migration
-- `DownAll() error` - Run all down migrations
-- `Steps(n int) error` - Run n migrations (positive for up, negative for down)
-- `Goto(version uint) error` - Migrate to a specific version
-- `Version() (uint, error)` - Get current migration version
 
 ## Configuration
 
-You can configure the migration directory and table name:
+Supports YAML, JSON, or environment variables:
 
-```go
-m := migration.New(db,
-    migration.WithDirectory("db/migrations"),
-    migration.WithTableName("schema_migrations"),
-)
+```yaml
+# config.yaml
+default: primary
+migration_table: migrations
+migration_dir: migrations
+seeder_dir: seeders
+log_level: info
+log_output: console
+
+connections:
+  primary:
+    driver: postgres
+    host: localhost
+    port: 5432
+    database: myapp
+    username: user
+    password: pass
+    max_open_conns: 25
+    max_idle_conns: 5
+    conn_max_lifetime: 5m
 ```
+
+## Framework Integration
+
+go-migration works with any Go framework — it only depends on `database/sql`. See the [examples/](examples/) directory:
+
+- [Gin](examples/gin/) — pass `*sql.DB` from your Gin setup
+- [Echo](examples/echo/) — pass `*sql.DB` from your Echo setup
+- [Fiber](examples/fiber/) — pass `*sql.DB` from your Fiber setup
+- [net/http](examples/nethttp/) — standard library, no framework
+
+The pattern is always the same: open a `*sql.DB`, create a `migrator.New(db)`, register migrations, call `m.Up()`.
 
 ## Supported Databases
 
 - PostgreSQL
 - MySQL
 - SQLite
-- SQL Server
-- And any database with a standard `database/sql` driver
 
-## Examples
+## Testing
 
-See the [examples](examples/) directory for more usage examples:
-
-- [PostgreSQL example](examples/postgres/)
-- [MySQL example](examples/mysql/)
-- [SQLite example](examples/sqlite/)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development Setup
-
-1. Clone the repository:
-```bash
-git clone https://github.com/andrianprasetya/go-migration.git
-cd go-migration
-```
-
-2. Install dependencies:
-```bash
-go mod download
-```
-
-3. Run tests:
 ```bash
 go test ./...
 ```
 
-4. Run tests with coverage:
-```bash
-go test -v -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-```
-
-### Guidelines
-
-- Write clear and descriptive commit messages
-- Add tests for new features
-- Update documentation as needed
-- Follow Go best practices and conventions
-- Ensure all tests pass before submitting a PR
+The project uses property-based testing with [pgregory.net/rapid](https://pkg.go.dev/pgregory.net/rapid) alongside standard unit tests with [testify](https://github.com/stretchr/testify).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Author
 
-**Andrian Prasetya**
-- GitHub: [@andrianprasetya](https://github.com/andrianprasetya)
-- Email: andrianprasetya223@gmail.com
-
-## Acknowledgments
-
-- Inspired by other migration tools in the Go ecosystem
-- Thanks to all contributors who have helped improve this project
-
-## Support
-
-If you find this project helpful, please consider giving it a ⭐️ on GitHub!
+Andrian Prasetya — [@andrianprasetya](https://github.com/andrianprasetya)
