@@ -179,7 +179,7 @@ func TestBlueprint_Index(t *testing.T) {
 
 	assert.Equal(t, "idx_users_email", idx.Name)
 	assert.Equal(t, []string{"email"}, idx.Columns)
-	assert.False(t, idx.Unique)
+	assert.Equal(t, IndexRegular, idx.Type)
 }
 
 func TestBlueprint_Index_Composite(t *testing.T) {
@@ -188,7 +188,7 @@ func TestBlueprint_Index_Composite(t *testing.T) {
 
 	assert.Equal(t, "idx_users_first_name_last_name", idx.Name)
 	assert.Equal(t, []string{"first_name", "last_name"}, idx.Columns)
-	assert.False(t, idx.Unique)
+	assert.Equal(t, IndexRegular, idx.Type)
 }
 
 func TestBlueprint_UniqueIndex(t *testing.T) {
@@ -197,7 +197,7 @@ func TestBlueprint_UniqueIndex(t *testing.T) {
 
 	assert.Equal(t, "uniq_users_email", idx.Name)
 	assert.Equal(t, []string{"email"}, idx.Columns)
-	assert.True(t, idx.Unique)
+	assert.Equal(t, IndexUnique, idx.Type)
 }
 
 // --- Foreign key methods ---

@@ -47,9 +47,14 @@ func (g *MySQLGrammar) CompileCreate(bp *schema.Blueprint) (string, error) {
 	// Compile indexes
 	for _, idx := range bp.Indexes() {
 		quotedCols := mysqlQuoteSlice(idx.Columns)
-		if idx.Unique {
+		switch idx.Type {
+		case schema.IndexUnique:
 			parts = append(parts, fmt.Sprintf("UNIQUE KEY %s (%s)", mysqlQuote(idx.Name), strings.Join(quotedCols, ", ")))
-		} else {
+		case schema.IndexFulltext:
+			parts = append(parts, fmt.Sprintf("FULLTEXT KEY %s (%s)", mysqlQuote(idx.Name), strings.Join(quotedCols, ", ")))
+		case schema.IndexSpatial:
+			parts = append(parts, fmt.Sprintf("SPATIAL KEY %s (%s)", mysqlQuote(idx.Name), strings.Join(quotedCols, ", ")))
+		default:
 			parts = append(parts, fmt.Sprintf("KEY %s (%s)", mysqlQuote(idx.Name), strings.Join(quotedCols, ", ")))
 		}
 	}
@@ -95,9 +100,14 @@ func (g *MySQLGrammar) CompileAlter(bp *schema.Blueprint) ([]string, error) {
 	// Add new indexes
 	for _, idx := range bp.Indexes() {
 		quotedCols := mysqlQuoteSlice(idx.Columns)
-		if idx.Unique {
+		switch idx.Type {
+		case schema.IndexUnique:
 			stmts = append(stmts, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", mysqlQuote(idx.Name), table, strings.Join(quotedCols, ", ")))
-		} else {
+		case schema.IndexFulltext:
+			stmts = append(stmts, fmt.Sprintf("CREATE FULLTEXT INDEX %s ON %s (%s)", mysqlQuote(idx.Name), table, strings.Join(quotedCols, ", ")))
+		case schema.IndexSpatial:
+			stmts = append(stmts, fmt.Sprintf("CREATE SPATIAL INDEX %s ON %s (%s)", mysqlQuote(idx.Name), table, strings.Join(quotedCols, ", ")))
+		default:
 			stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", mysqlQuote(idx.Name), table, strings.Join(quotedCols, ", ")))
 		}
 	}
@@ -194,6 +204,29 @@ func (g *MySQLGrammar) CompileColumnType(col schema.ColumnDefinition) (string, e
 		return "JSON", nil
 	case schema.TypeBinary:
 		return "BLOB", nil
+	case schema.TypeEnum:
+		if len(col.AllowedValues) == 0 {
+			return "", fmt.Errorf("column %q: enum column requires at least one allowed value", col.Name)
+		}
+		quoted := make([]string, len(col.AllowedValues))
+		for i, v := range col.AllowedValues {
+			quoted[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+		}
+		return fmt.Sprintf("ENUM(%s)", strings.Join(quoted, ",")), nil
+	case schema.TypeChar:
+		length := col.Length
+		if length <= 0 {
+			length = 255
+		}
+		return fmt.Sprintf("CHAR(%d)", length), nil
+	case schema.TypeLongText:
+		return "LONGTEXT", nil
+	case schema.TypeMediumText:
+		return "MEDIUMTEXT", nil
+	case schema.TypeTinyInt:
+		return "TINYINT", nil
+	case schema.TypeSmallInt:
+		return "SMALLINT", nil
 	default:
 		return "", fmt.Errorf("column %q: type %q: %w", col.Name, col.Type.String(), ErrUnsupportedType)
 	}

@@ -513,3 +513,182 @@ func TestSQLite_CompileCreate_DefaultStringEscapesSingleQuotes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, sql, "DEFAULT 'it''s'")
 }
+
+// --- New column type compilation tests ---
+
+func TestSQLite_CompileColumnType_Enum(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum, AllowedValues: []string{"active", "inactive", "pending"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, `TEXT CHECK ("status" IN ('active','inactive','pending'))`, result)
+}
+
+func TestSQLite_CompileColumnType_EnumSingleValue(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "role", Type: schema.TypeEnum, AllowedValues: []string{"admin"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, `TEXT CHECK ("role" IN ('admin'))`, result)
+}
+
+func TestSQLite_CompileColumnType_EnumWithQuotes(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "label", Type: schema.TypeEnum, AllowedValues: []string{"it's", "they're"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, `TEXT CHECK ("label" IN ('it''s','they''re'))`, result)
+}
+
+func TestSQLite_CompileColumnType_EnumEmpty(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum, AllowedValues: []string{}}
+	_, err := g.CompileColumnType(col)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enum column requires at least one allowed value")
+}
+
+func TestSQLite_CompileColumnType_EnumNilValues(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum}
+	_, err := g.CompileColumnType(col)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enum column requires at least one allowed value")
+}
+
+func TestSQLite_CompileColumnType_Char(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar, Length: 10}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "TEXT", result)
+}
+
+func TestSQLite_CompileColumnType_CharZeroLength(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar, Length: 0}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "TEXT", result)
+}
+
+func TestSQLite_CompileColumnType_LongText(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "content", Type: schema.TypeLongText}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "TEXT", result)
+}
+
+func TestSQLite_CompileColumnType_MediumText(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "description", Type: schema.TypeMediumText}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "TEXT", result)
+}
+
+func TestSQLite_CompileColumnType_TinyInt(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "priority", Type: schema.TypeTinyInt}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "INTEGER", result)
+}
+
+func TestSQLite_CompileColumnType_SmallInt(t *testing.T) {
+	g := newSQLiteGrammar()
+	col := schema.ColumnDefinition{Name: "age", Type: schema.TypeSmallInt}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "INTEGER", result)
+}
+
+// --- New column types in CompileCreate ---
+
+func TestSQLite_CompileCreate_WithEnumColumn(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("users")
+	bp.String("name", 255)
+	bp.Enum("status", []string{"active", "inactive"})
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `TEXT CHECK ("status" IN ('active','inactive'))`)
+}
+
+func TestSQLite_CompileCreate_WithCharColumn(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("countries")
+	bp.Char("code", 2)
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `"code" TEXT`)
+}
+
+func TestSQLite_CompileCreate_WithNewTextTypes(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.LongText("body")
+	bp.MediumText("summary")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `"body" TEXT`)
+	assert.Contains(t, sql, `"summary" TEXT`)
+}
+
+func TestSQLite_CompileCreate_WithNewIntTypes(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("metrics")
+	bp.TinyInt("priority")
+	bp.SmallInt("score")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `"priority" INTEGER`)
+	assert.Contains(t, sql, `"score" INTEGER`)
+}
+
+func TestSQLite_CompileCreate_WithFulltextIndex_ReturnsError(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.String("title", 255)
+	bp.FulltextIndex("title")
+
+	_, err := g.CompileCreate(bp)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fulltext indexes are not supported by SQLite")
+}
+
+func TestSQLite_CompileCreate_WithSpatialIndex_ReturnsError(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("locations")
+	bp.String("coords", 255)
+	bp.SpatialIndex("coords")
+
+	_, err := g.CompileCreate(bp)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "spatial indexes are not supported by SQLite")
+}
+
+func TestSQLite_CompileAlter_WithFulltextIndex_ReturnsError(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.FulltextIndex("title")
+
+	_, err := g.CompileAlter(bp)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fulltext indexes are not supported by SQLite")
+}
+
+func TestSQLite_CompileAlter_WithSpatialIndex_ReturnsError(t *testing.T) {
+	g := newSQLiteGrammar()
+	bp := schema.NewBlueprint("locations")
+	bp.SpatialIndex("coords")
+
+	_, err := g.CompileAlter(bp)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "spatial indexes are not supported by SQLite")
+}

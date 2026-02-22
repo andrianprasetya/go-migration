@@ -19,15 +19,29 @@ type MigrationStatus struct {
 // Migrator is the top-level orchestrator that wires together the Registry,
 // Runner, Tracker, BatchManager, and HookManager to execute migration
 // lifecycle operations.
+// ProgressEvent describes the completion of a single migration during
+// an Up, Rollback, or Reset operation.
+type ProgressEvent struct {
+	Name      string
+	Index     int // 0-based position
+	Total     int // total migrations in this operation
+	Duration  time.Duration
+	Direction string // "up" or "down"
+}
+
+// ProgressFunc is a callback invoked after each migration completes.
+type ProgressFunc func(event ProgressEvent)
+
 type Migrator struct {
-	db       *sql.DB
-	registry *Registry
-	runner   *Runner
-	tracker  *Tracker
-	batch    *BatchManager
-	hooks    *HookManager
-	grammar  schema.Grammar
-	logger   Logger
+	db         *sql.DB
+	registry   *Registry
+	runner     *Runner
+	tracker    *Tracker
+	batch      *BatchManager
+	hooks      *HookManager
+	grammar    schema.Grammar
+	logger     Logger
+	progressFn ProgressFunc
 }
 
 // Option configures a Migrator.
@@ -60,6 +74,24 @@ func WithLogger(l Logger) Option {
 	}
 }
 
+// WithAutoDiscover returns an Option that loads auto-registered migrations.
+// Panics if AutoDiscover() returns an error (consistent with option pattern).
+func WithAutoDiscover() Option {
+	return func(m *Migrator) {
+		if err := m.AutoDiscover(); err != nil {
+			panic(fmt.Sprintf("WithAutoDiscover: %v", err))
+		}
+	}
+}
+
+// WithProgress sets a callback that is invoked after each migration completes
+// during Up, Rollback, or Reset operations.
+func WithProgress(fn ProgressFunc) Option {
+	return func(m *Migrator) {
+		m.progressFn = fn
+	}
+}
+
 // New creates a new Migrator with the given database connection and options.
 // Defaults: table name "migrations", nil grammar, nil logger.
 func New(db *sql.DB, opts ...Option) *Migrator {
@@ -87,6 +119,18 @@ func New(db *sql.DB, opts ...Option) *Migrator {
 // Register adds a migration to the registry.
 func (m *Migrator) Register(name string, migration Migration) error {
 	return m.registry.Register(name, migration)
+}
+
+// AutoDiscover loads all migrations from the global auto-registry
+// into the Migrator's internal registry.
+func (m *Migrator) AutoDiscover() error {
+	autoMigrations := GetAutoRegistered()
+	for _, am := range autoMigrations {
+		if err := m.registry.Register(am.Name, am.Migration); err != nil {
+			return fmt.Errorf("auto-discover: %w", err)
+		}
+	}
+	return nil
 }
 
 // BeforeMigrate registers a before-migration hook.
@@ -135,7 +179,8 @@ func (m *Migrator) Up() error {
 		return err
 	}
 
-	for _, p := range pending {
+	total := len(pending)
+	for i, p := range pending {
 		if err := m.hooks.RunBefore(p.Name, "up"); err != nil {
 			return fmt.Errorf("before hook for %q: %w", p.Name, err)
 		}
@@ -152,6 +197,16 @@ func (m *Migrator) Up() error {
 
 		duration := time.Since(start)
 		_ = m.hooks.RunAfter(p.Name, "up", duration)
+
+		if m.progressFn != nil {
+			m.progressFn(ProgressEvent{
+				Name:      p.Name,
+				Index:     i,
+				Total:     total,
+				Duration:  duration,
+				Direction: "up",
+			})
+		}
 	}
 
 	return nil
@@ -187,7 +242,8 @@ func (m *Migrator) Rollback(steps int) error {
 		reverseRecords(records)
 	}
 
-	for _, rec := range records {
+	total := len(records)
+	for i, rec := range records {
 		migration, err := m.registry.Get(rec.Name)
 		if err != nil {
 			return err
@@ -209,6 +265,16 @@ func (m *Migrator) Rollback(steps int) error {
 
 		duration := time.Since(start)
 		_ = m.hooks.RunAfter(rec.Name, "down", duration)
+
+		if m.progressFn != nil {
+			m.progressFn(ProgressEvent{
+				Name:      rec.Name,
+				Index:     i,
+				Total:     total,
+				Duration:  duration,
+				Direction: "down",
+			})
+		}
 	}
 
 	return nil
@@ -228,7 +294,8 @@ func (m *Migrator) Reset() error {
 	// Reverse to execute Down() in reverse timestamp order.
 	reverseRecords(applied)
 
-	for _, rec := range applied {
+	total := len(applied)
+	for i, rec := range applied {
 		migration, err := m.registry.Get(rec.Name)
 		if err != nil {
 			return err
@@ -246,6 +313,16 @@ func (m *Migrator) Reset() error {
 
 		duration := time.Since(start)
 		_ = m.hooks.RunAfter(rec.Name, "down", duration)
+
+		if m.progressFn != nil {
+			m.progressFn(ProgressEvent{
+				Name:      rec.Name,
+				Index:     i,
+				Total:     total,
+				Duration:  duration,
+				Direction: "down",
+			})
+		}
 	}
 
 	return nil

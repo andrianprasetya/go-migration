@@ -3,9 +3,9 @@ package cli
 import (
 	"testing"
 
-	"github.com/andrianprasetya/go-migration/internal/config"
 	"github.com/andrianprasetya/go-migration/internal/generator"
 	"github.com/andrianprasetya/go-migration/internal/logger"
+	"github.com/andrianprasetya/go-migration/pkg/config"
 	"github.com/stretchr/testify/assert"
 )
 

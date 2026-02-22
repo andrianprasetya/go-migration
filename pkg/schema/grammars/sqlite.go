@@ -47,7 +47,12 @@ func (g *SQLiteGrammar) CompileCreate(bp *schema.Blueprint) (string, error) {
 
 	// Compile indexes as separate constraints for unique indexes
 	for _, idx := range bp.Indexes() {
-		if idx.Unique {
+		switch idx.Type {
+		case schema.IndexFulltext:
+			return "", fmt.Errorf("fulltext indexes are not supported by SQLite")
+		case schema.IndexSpatial:
+			return "", fmt.Errorf("spatial indexes are not supported by SQLite")
+		case schema.IndexUnique:
 			quotedCols := quoteSlice(idx.Columns)
 			parts = append(parts, fmt.Sprintf("CONSTRAINT %s UNIQUE (%s)", quote(idx.Name), strings.Join(quotedCols, ", ")))
 		}
@@ -63,7 +68,12 @@ func (g *SQLiteGrammar) CompileCreate(bp *schema.Blueprint) (string, error) {
 
 	// Append non-unique index CREATE INDEX statements separated by semicolons
 	for _, idx := range bp.Indexes() {
-		if !idx.Unique {
+		switch idx.Type {
+		case schema.IndexFulltext:
+			return "", fmt.Errorf("fulltext indexes are not supported by SQLite")
+		case schema.IndexSpatial:
+			return "", fmt.Errorf("spatial indexes are not supported by SQLite")
+		case schema.IndexRegular:
 			quotedCols := quoteSlice(idx.Columns)
 			sql += fmt.Sprintf("; CREATE INDEX %s ON %s (%s)", quote(idx.Name), quote(bp.Table()), strings.Join(quotedCols, ", "))
 		}
@@ -105,10 +115,16 @@ func (g *SQLiteGrammar) CompileAlter(bp *schema.Blueprint) ([]string, error) {
 
 	// Add new indexes
 	for _, idx := range bp.Indexes() {
-		quotedCols := quoteSlice(idx.Columns)
-		if idx.Unique {
+		switch idx.Type {
+		case schema.IndexFulltext:
+			return nil, fmt.Errorf("fulltext indexes are not supported by SQLite")
+		case schema.IndexSpatial:
+			return nil, fmt.Errorf("spatial indexes are not supported by SQLite")
+		case schema.IndexUnique:
+			quotedCols := quoteSlice(idx.Columns)
 			stmts = append(stmts, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", quote(idx.Name), table, strings.Join(quotedCols, ", ")))
-		} else {
+		default:
+			quotedCols := quoteSlice(idx.Columns)
 			stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", quote(idx.Name), table, strings.Join(quotedCols, ", ")))
 		}
 	}
@@ -187,6 +203,25 @@ func (g *SQLiteGrammar) CompileColumnType(col schema.ColumnDefinition) (string, 
 		return "TEXT", nil
 	case schema.TypeBinary:
 		return "BLOB", nil
+	case schema.TypeEnum:
+		if len(col.AllowedValues) == 0 {
+			return "", fmt.Errorf("column %q: enum column requires at least one allowed value", col.Name)
+		}
+		quoted := make([]string, len(col.AllowedValues))
+		for i, v := range col.AllowedValues {
+			quoted[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+		}
+		return fmt.Sprintf(`TEXT CHECK ("%s" IN (%s))`, col.Name, strings.Join(quoted, ",")), nil
+	case schema.TypeChar:
+		return "TEXT", nil
+	case schema.TypeLongText:
+		return "TEXT", nil
+	case schema.TypeMediumText:
+		return "TEXT", nil
+	case schema.TypeTinyInt:
+		return "INTEGER", nil
+	case schema.TypeSmallInt:
+		return "INTEGER", nil
 	default:
 		return "", fmt.Errorf("column %q: type %q: %w", col.Name, col.Type.String(), ErrUnsupportedType)
 	}

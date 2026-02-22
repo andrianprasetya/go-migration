@@ -250,7 +250,7 @@ func TestProperty15_BlueprintFeaturesReflectedInSQL(t *testing.T) {
 				for _, idx := range bp.Indexes() {
 					assert.Contains(t, sql, idx.Name,
 						"SQL should contain index name %q", idx.Name)
-					if idx.Unique {
+					if idx.Type == schema.IndexUnique {
 						assert.Contains(t, upperSQL, "UNIQUE",
 							"Unique index %q should produce UNIQUE in SQL", idx.Name)
 					}

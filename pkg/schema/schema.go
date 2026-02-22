@@ -5,8 +5,8 @@ import "database/sql"
 // Executor abstracts database execution so that both *sql.DB and *sql.Tx
 // can be used interchangeably with the Builder.
 type Executor interface {
-	Exec(query string, args ...interface{}) (sql.Result, error)
-	QueryRow(query string, args ...interface{}) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 // Builder provides a fluent API for defining database schema changes.

@@ -10,8 +10,8 @@ import (
 // Logger defines a minimal logging interface for the runner.
 // This will be replaced by the full logger package once implemented.
 type Logger interface {
-	Info(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
+	Info(msg string, args ...any)
+	Error(msg string, args ...any)
 }
 
 // Runner executes migration Up/Down methods within transactions.

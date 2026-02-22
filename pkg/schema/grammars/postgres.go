@@ -49,7 +49,7 @@ func (g *PostgresGrammar) CompileCreate(bp *schema.Blueprint) (string, error) {
 
 	// Compile indexes as separate constraints for unique indexes
 	for _, idx := range bp.Indexes() {
-		if idx.Unique {
+		if idx.Type == schema.IndexUnique {
 			quotedCols := quoteSlice(idx.Columns)
 			parts = append(parts, fmt.Sprintf("CONSTRAINT %s UNIQUE (%s)", quote(idx.Name), strings.Join(quotedCols, ", ")))
 		}
@@ -65,9 +65,17 @@ func (g *PostgresGrammar) CompileCreate(bp *schema.Blueprint) (string, error) {
 
 	// Append non-unique index CREATE INDEX statements separated by semicolons
 	for _, idx := range bp.Indexes() {
-		if !idx.Unique {
+		switch idx.Type {
+		case schema.IndexRegular:
 			quotedCols := quoteSlice(idx.Columns)
 			sql += fmt.Sprintf("; CREATE INDEX %s ON %s (%s)", quote(idx.Name), quote(bp.Table()), strings.Join(quotedCols, ", "))
+		case schema.IndexFulltext:
+			for _, col := range idx.Columns {
+				sql += fmt.Sprintf("; CREATE INDEX %s ON %s USING GIN (to_tsvector('english', %s))", quote(idx.Name), quote(bp.Table()), quote(col))
+			}
+		case schema.IndexSpatial:
+			quotedCols := quoteSlice(idx.Columns)
+			sql += fmt.Sprintf("; CREATE INDEX %s ON %s USING GIST (%s)", quote(idx.Name), quote(bp.Table()), strings.Join(quotedCols, ", "))
 		}
 	}
 
@@ -105,9 +113,16 @@ func (g *PostgresGrammar) CompileAlter(bp *schema.Blueprint) ([]string, error) {
 	// Add new indexes
 	for _, idx := range bp.Indexes() {
 		quotedCols := quoteSlice(idx.Columns)
-		if idx.Unique {
+		switch idx.Type {
+		case schema.IndexUnique:
 			stmts = append(stmts, fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", quote(idx.Name), table, strings.Join(quotedCols, ", ")))
-		} else {
+		case schema.IndexFulltext:
+			for _, col := range idx.Columns {
+				stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s USING GIN (to_tsvector('english', %s))", quote(idx.Name), table, quote(col)))
+			}
+		case schema.IndexSpatial:
+			stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s USING GIST (%s)", quote(idx.Name), table, strings.Join(quotedCols, ", ")))
+		default:
 			stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", quote(idx.Name), table, strings.Join(quotedCols, ", ")))
 		}
 	}
@@ -196,6 +211,29 @@ func (g *PostgresGrammar) CompileColumnType(col schema.ColumnDefinition) (string
 		return "JSONB", nil
 	case schema.TypeBinary:
 		return "BYTEA", nil
+	case schema.TypeEnum:
+		if len(col.AllowedValues) == 0 {
+			return "", fmt.Errorf("column %q: enum column requires at least one allowed value", col.Name)
+		}
+		quoted := make([]string, len(col.AllowedValues))
+		for i, v := range col.AllowedValues {
+			quoted[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+		}
+		return fmt.Sprintf(`VARCHAR(255) CHECK ("%s" IN (%s))`, col.Name, strings.Join(quoted, ",")), nil
+	case schema.TypeChar:
+		length := col.Length
+		if length <= 0 {
+			length = 255
+		}
+		return fmt.Sprintf("CHAR(%d)", length), nil
+	case schema.TypeLongText:
+		return "TEXT", nil
+	case schema.TypeMediumText:
+		return "TEXT", nil
+	case schema.TypeTinyInt:
+		return "SMALLINT", nil
+	case schema.TypeSmallInt:
+		return "SMALLINT", nil
 	default:
 		return "", fmt.Errorf("column %q: type %q: %w", col.Name, col.Type.String(), ErrUnsupportedType)
 	}
@@ -262,7 +300,7 @@ func quoteSlice(names []string) []string {
 }
 
 // formatDefault formats a default value for SQL.
-func formatDefault(value interface{}) string {
+func formatDefault(value any) string {
 	switch v := value.(type) {
 	case string:
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))

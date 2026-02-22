@@ -14,3 +14,19 @@ type DependentSeeder interface {
 	Seeder
 	DependsOn() []string
 }
+
+// TaggedSeeder extends Seeder with tag-based grouping.
+// Tags returns the list of tags (e.g., "development", "testing", "production")
+// that this seeder belongs to. Seeders implementing this interface can be
+// selectively executed via Runner.RunByTag.
+type TaggedSeeder interface {
+	Seeder
+	Tags() []string
+}
+
+// RollbackableSeeder extends Seeder with rollback capability.
+// Rollback undoes the data changes made by the seeder's Run method.
+type RollbackableSeeder interface {
+	Seeder
+	Rollback(db *sql.DB) error
+}

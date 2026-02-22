@@ -434,7 +434,7 @@ func TestProperty19_BlueprintToSQLRoundTrip(t *testing.T) {
 			pi := parsed.Indexes[i]
 			assert.Equal(t, bpIdx.Name, pi.Name,
 				"Index %d name should match", i)
-			assert.Equal(t, bpIdx.Unique, pi.Unique,
+			assert.Equal(t, bpIdx.Type == schema.IndexUnique, pi.Unique,
 				"Index %q unique flag should match", bpIdx.Name)
 			assert.Equal(t, bpIdx.Columns, pi.Columns,
 				"Index %q columns should match", bpIdx.Name)

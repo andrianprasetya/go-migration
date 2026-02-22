@@ -152,6 +152,40 @@ func (bp *Blueprint) Binary(name string) *ColumnDefinition {
 	return bp.addColumn(name, TypeBinary)
 }
 
+// Enum adds an ENUM column with the given allowed values.
+func (bp *Blueprint) Enum(name string, allowed []string) *ColumnDefinition {
+	col := bp.addColumn(name, TypeEnum)
+	col.AllowedValues = allowed
+	return col
+}
+
+// Char adds a fixed-length CHAR column with the given length.
+func (bp *Blueprint) Char(name string, length int) *ColumnDefinition {
+	col := bp.addColumn(name, TypeChar)
+	col.Length = length
+	return col
+}
+
+// LongText adds a LONGTEXT column.
+func (bp *Blueprint) LongText(name string) *ColumnDefinition {
+	return bp.addColumn(name, TypeLongText)
+}
+
+// MediumText adds a MEDIUMTEXT column.
+func (bp *Blueprint) MediumText(name string) *ColumnDefinition {
+	return bp.addColumn(name, TypeMediumText)
+}
+
+// TinyInt adds a TINYINT column.
+func (bp *Blueprint) TinyInt(name string) *ColumnDefinition {
+	return bp.addColumn(name, TypeTinyInt)
+}
+
+// SmallInt adds a SMALLINT column.
+func (bp *Blueprint) SmallInt(name string) *ColumnDefinition {
+	return bp.addColumn(name, TypeSmallInt)
+}
+
 // Timestamps adds created_at and updated_at nullable timestamp columns.
 func (bp *Blueprint) Timestamps() {
 	bp.Timestamp("created_at").Nullable()
@@ -167,11 +201,11 @@ func (bp *Blueprint) SoftDeletes() {
 
 // Index adds a composite index on the given columns.
 func (bp *Blueprint) Index(columns ...string) *IndexDefinition {
-	name := bp.generateIndexName(columns, false)
+	name := bp.generateIndexName(columns, "idx")
 	idx := IndexDefinition{
 		Name:    name,
 		Columns: columns,
-		Unique:  false,
+		Type:    IndexRegular,
 	}
 	bp.indexes = append(bp.indexes, idx)
 	return &bp.indexes[len(bp.indexes)-1]
@@ -179,22 +213,42 @@ func (bp *Blueprint) Index(columns ...string) *IndexDefinition {
 
 // UniqueIndex adds a unique composite index on the given columns.
 func (bp *Blueprint) UniqueIndex(columns ...string) *IndexDefinition {
-	name := bp.generateIndexName(columns, true)
+	name := bp.generateIndexName(columns, "uniq")
 	idx := IndexDefinition{
 		Name:    name,
 		Columns: columns,
-		Unique:  true,
+		Type:    IndexUnique,
+	}
+	bp.indexes = append(bp.indexes, idx)
+	return &bp.indexes[len(bp.indexes)-1]
+}
+
+// FulltextIndex adds a fulltext index on the given columns.
+func (bp *Blueprint) FulltextIndex(columns ...string) *IndexDefinition {
+	name := bp.generateIndexName(columns, "ft")
+	idx := IndexDefinition{
+		Name:    name,
+		Columns: columns,
+		Type:    IndexFulltext,
+	}
+	bp.indexes = append(bp.indexes, idx)
+	return &bp.indexes[len(bp.indexes)-1]
+}
+
+// SpatialIndex adds a spatial index on the given columns.
+func (bp *Blueprint) SpatialIndex(columns ...string) *IndexDefinition {
+	name := bp.generateIndexName(columns, "sp")
+	idx := IndexDefinition{
+		Name:    name,
+		Columns: columns,
+		Type:    IndexSpatial,
 	}
 	bp.indexes = append(bp.indexes, idx)
 	return &bp.indexes[len(bp.indexes)-1]
 }
 
 // generateIndexName creates a conventional index name from table and columns.
-func (bp *Blueprint) generateIndexName(columns []string, unique bool) string {
-	prefix := "idx"
-	if unique {
-		prefix = "uniq"
-	}
+func (bp *Blueprint) generateIndexName(columns []string, prefix string) string {
 	name := prefix + "_" + bp.table
 	for _, col := range columns {
 		name += "_" + col

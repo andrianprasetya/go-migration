@@ -58,10 +58,10 @@ func ParseLevel(s string) LogLevel {
 
 // Logger defines the logging interface used throughout go-migration.
 type Logger interface {
-	Debug(msg string, args ...interface{})
-	Info(msg string, args ...interface{})
-	Warn(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
+	Debug(msg string, args ...any)
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
+	Error(msg string, args ...any)
 }
 
 // ConsoleLogger writes log entries to os.Stdout with level filtering.
@@ -82,12 +82,12 @@ func newConsoleLoggerWithWriter(level LogLevel, w io.Writer) *ConsoleLogger {
 	return &ConsoleLogger{level: level, out: w}
 }
 
-func (c *ConsoleLogger) Debug(msg string, args ...interface{}) { c.log(LevelDebug, msg, args...) }
-func (c *ConsoleLogger) Info(msg string, args ...interface{})  { c.log(LevelInfo, msg, args...) }
-func (c *ConsoleLogger) Warn(msg string, args ...interface{})  { c.log(LevelWarn, msg, args...) }
-func (c *ConsoleLogger) Error(msg string, args ...interface{}) { c.log(LevelError, msg, args...) }
+func (c *ConsoleLogger) Debug(msg string, args ...any) { c.log(LevelDebug, msg, args...) }
+func (c *ConsoleLogger) Info(msg string, args ...any)  { c.log(LevelInfo, msg, args...) }
+func (c *ConsoleLogger) Warn(msg string, args ...any)  { c.log(LevelWarn, msg, args...) }
+func (c *ConsoleLogger) Error(msg string, args ...any) { c.log(LevelError, msg, args...) }
 
-func (c *ConsoleLogger) log(lvl LogLevel, msg string, args ...interface{}) {
+func (c *ConsoleLogger) log(lvl LogLevel, msg string, args ...any) {
 	if lvl < c.level {
 		return
 	}
@@ -120,10 +120,10 @@ func newFileLoggerWithWriter(level LogLevel, w io.Writer) *FileLogger {
 	return &FileLogger{level: level, out: w}
 }
 
-func (fl *FileLogger) Debug(msg string, args ...interface{}) { fl.log(LevelDebug, msg, args...) }
-func (fl *FileLogger) Info(msg string, args ...interface{})  { fl.log(LevelInfo, msg, args...) }
-func (fl *FileLogger) Warn(msg string, args ...interface{})  { fl.log(LevelWarn, msg, args...) }
-func (fl *FileLogger) Error(msg string, args ...interface{}) { fl.log(LevelError, msg, args...) }
+func (fl *FileLogger) Debug(msg string, args ...any) { fl.log(LevelDebug, msg, args...) }
+func (fl *FileLogger) Info(msg string, args ...any)  { fl.log(LevelInfo, msg, args...) }
+func (fl *FileLogger) Warn(msg string, args ...any)  { fl.log(LevelWarn, msg, args...) }
+func (fl *FileLogger) Error(msg string, args ...any) { fl.log(LevelError, msg, args...) }
 
 // Close closes the underlying file. It is a no-op if the FileLogger was
 // created with a plain io.Writer (testing path).
@@ -134,7 +134,7 @@ func (fl *FileLogger) Close() error {
 	return nil
 }
 
-func (fl *FileLogger) log(lvl LogLevel, msg string, args ...interface{}) {
+func (fl *FileLogger) log(lvl LogLevel, msg string, args ...any) {
 	if lvl < fl.level {
 		return
 	}
@@ -147,13 +147,13 @@ func (fl *FileLogger) log(lvl LogLevel, msg string, args ...interface{}) {
 // NopLogger is a logger that silently discards all messages.
 type NopLogger struct{}
 
-func (NopLogger) Debug(string, ...interface{}) {}
-func (NopLogger) Info(string, ...interface{})  {}
-func (NopLogger) Warn(string, ...interface{})  {}
-func (NopLogger) Error(string, ...interface{}) {}
+func (NopLogger) Debug(string, ...any) {}
+func (NopLogger) Info(string, ...any)  {}
+func (NopLogger) Warn(string, ...any)  {}
+func (NopLogger) Error(string, ...any) {}
 
 // formatEntry builds a single log line: "2006-01-02T15:04:05Z07:00 [LEVEL] message\n"
-func formatEntry(lvl LogLevel, msg string, args ...interface{}) string {
+func formatEntry(lvl LogLevel, msg string, args ...any) string {
 	ts := time.Now().Format(time.RFC3339)
 	text := fmt.Sprintf(msg, args...)
 	return fmt.Sprintf("%s [%s] %s\n", ts, lvl, text)

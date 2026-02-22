@@ -27,6 +27,7 @@ Usage Examples:
   go-migration migrate:install          Create the migration tracking table
   go-migration make:migration create_users --create=users
   go-migration make:seeder users
+  go-migration make:factory users
   go-migration db:seed                  Run all seeders
   go-migration db:seed --class=users    Run a specific seeder`,
 		SilenceUsage:  true,

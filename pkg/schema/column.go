@@ -16,6 +16,12 @@ const (
 	TypeUUID                         // UUID
 	TypeJSON                         // JSON
 	TypeBinary                       // BINARY/BLOB
+	TypeEnum                         // ENUM
+	TypeChar                         // CHAR(n)
+	TypeLongText                     // LONGTEXT
+	TypeMediumText                   // MEDIUMTEXT
+	TypeTinyInt                      // TINYINT
+	TypeSmallInt                     // SMALLINT
 )
 
 // String returns the string representation of a ColumnType.
@@ -45,6 +51,18 @@ func (ct ColumnType) String() string {
 		return "json"
 	case TypeBinary:
 		return "binary"
+	case TypeEnum:
+		return "enum"
+	case TypeChar:
+		return "char"
+	case TypeLongText:
+		return "longText"
+	case TypeMediumText:
+		return "mediumText"
+	case TypeTinyInt:
+		return "tinyInt"
+	case TypeSmallInt:
+		return "smallInt"
 	default:
 		return "unknown"
 	}
@@ -58,11 +76,12 @@ type ColumnDefinition struct {
 	Precision       int
 	Scale           int
 	IsNullable      bool
-	DefaultValue    interface{}
+	DefaultValue    any
 	IsPrimary       bool
 	IsUnique        bool
 	IsUnsigned      bool
 	IsAutoIncrement bool
+	AllowedValues   []string
 }
 
 // Nullable marks the column as nullable.
@@ -72,7 +91,7 @@ func (cd *ColumnDefinition) Nullable() *ColumnDefinition {
 }
 
 // Default sets the default value for the column.
-func (cd *ColumnDefinition) Default(value interface{}) *ColumnDefinition {
+func (cd *ColumnDefinition) Default(value any) *ColumnDefinition {
 	cd.DefaultValue = value
 	return cd
 }

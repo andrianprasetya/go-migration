@@ -129,6 +129,42 @@ func (g *Generator) Seeder(description string) (string, error) {
 	return outPath, nil
 }
 
+// Factory generates a factory file and returns the full filepath.
+// The filename follows the pattern description_factory.go.
+func (g *Generator) Factory(description string) (string, error) {
+	filename := fmt.Sprintf("%s_factory.go", description)
+	structName := toStructName(description)
+
+	content, err := templateFS.ReadFile("templates/factory.go.tmpl")
+	if err != nil {
+		return "", fmt.Errorf("read factory template: %w", err)
+	}
+
+	tmpl, err := template.New("factory.go.tmpl").Parse(string(content))
+	if err != nil {
+		return "", fmt.Errorf("parse factory template: %w", err)
+	}
+
+	data := templateData{StructName: structName}
+
+	outPath := filepath.Join(g.outputDir, filename)
+	if err := os.MkdirAll(g.outputDir, 0o755); err != nil {
+		return "", fmt.Errorf("create output dir: %w", err)
+	}
+
+	f, err := os.Create(outPath)
+	if err != nil {
+		return "", fmt.Errorf("create file %s: %w", outPath, err)
+	}
+	defer f.Close()
+
+	if err := tmpl.Execute(f, data); err != nil {
+		return "", fmt.Errorf("execute template: %w", err)
+	}
+
+	return outPath, nil
+}
+
 // toStructName converts a snake_case description to PascalCase.
 // For example, "create_users" becomes "CreateUsers".
 func toStructName(description string) string {

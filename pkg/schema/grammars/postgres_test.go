@@ -510,3 +510,209 @@ func TestCompileCreate_Timestamps(t *testing.T) {
 		}
 	}
 }
+
+// --- New column type compilation tests ---
+
+func TestCompileColumnType_Enum(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum, AllowedValues: []string{"active", "inactive", "pending"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, `VARCHAR(255) CHECK ("status" IN ('active','inactive','pending'))`, result)
+}
+
+func TestCompileColumnType_EnumSingleValue(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "role", Type: schema.TypeEnum, AllowedValues: []string{"admin"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, `VARCHAR(255) CHECK ("role" IN ('admin'))`, result)
+}
+
+func TestCompileColumnType_EnumWithQuotes(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "label", Type: schema.TypeEnum, AllowedValues: []string{"it's", "they're"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, `VARCHAR(255) CHECK ("label" IN ('it''s','they''re'))`, result)
+}
+
+func TestCompileColumnType_EnumEmpty(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum, AllowedValues: []string{}}
+	_, err := g.CompileColumnType(col)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enum column requires at least one allowed value")
+}
+
+func TestCompileColumnType_EnumNilValues(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum}
+	_, err := g.CompileColumnType(col)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enum column requires at least one allowed value")
+}
+
+func TestCompileColumnType_Char(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar, Length: 10}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "CHAR(10)", result)
+}
+
+func TestCompileColumnType_CharDefaultLength(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "CHAR(255)", result)
+}
+
+func TestCompileColumnType_CharZeroLength(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar, Length: 0}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "CHAR(255)", result)
+}
+
+func TestCompileColumnType_LongText(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "content", Type: schema.TypeLongText}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "TEXT", result)
+}
+
+func TestCompileColumnType_MediumText(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "description", Type: schema.TypeMediumText}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "TEXT", result)
+}
+
+func TestCompileColumnType_TinyInt(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "priority", Type: schema.TypeTinyInt}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "SMALLINT", result)
+}
+
+func TestCompileColumnType_SmallInt(t *testing.T) {
+	g := newGrammar()
+	col := schema.ColumnDefinition{Name: "age", Type: schema.TypeSmallInt}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "SMALLINT", result)
+}
+
+// --- New column types in CompileCreate ---
+
+func TestCompileCreate_WithEnumColumn(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("users")
+	bp.String("name", 255)
+	bp.Enum("status", []string{"active", "inactive"})
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `VARCHAR(255) CHECK ("status" IN ('active','inactive'))`)
+}
+
+func TestCompileCreate_WithCharColumn(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("countries")
+	bp.Char("code", 2)
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `"code" CHAR(2)`)
+}
+
+func TestCompileCreate_WithNewTextTypes(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.LongText("body")
+	bp.MediumText("summary")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `"body" TEXT`)
+	assert.Contains(t, sql, `"summary" TEXT`)
+}
+
+func TestCompileCreate_WithNewIntTypes(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("metrics")
+	bp.TinyInt("priority")
+	bp.SmallInt("score")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `"priority" SMALLINT`)
+	assert.Contains(t, sql, `"score" SMALLINT`)
+}
+
+// --- Fulltext and spatial index compilation tests ---
+
+func TestCompileCreate_WithFulltextIndex(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.String("title", 255)
+	bp.Text("body")
+	bp.FulltextIndex("title")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `CREATE INDEX "ft_articles_title" ON "articles" USING GIN (to_tsvector('english', "title"))`)
+}
+
+func TestCompileCreate_WithSpatialIndex(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("locations")
+	bp.String("geom", 255)
+	bp.SpatialIndex("geom")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `CREATE INDEX "sp_locations_geom" ON "locations" USING GIST ("geom")`)
+}
+
+func TestCompileAlter_AddFulltextIndex(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.FulltextIndex("title")
+
+	stmts, err := g.CompileAlter(bp)
+	require.NoError(t, err)
+	require.Len(t, stmts, 1)
+	assert.Equal(t, `CREATE INDEX "ft_articles_title" ON "articles" USING GIN (to_tsvector('english', "title"))`, stmts[0])
+}
+
+func TestCompileAlter_AddSpatialIndex(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("locations")
+	bp.SpatialIndex("geom")
+
+	stmts, err := g.CompileAlter(bp)
+	require.NoError(t, err)
+	require.Len(t, stmts, 1)
+	assert.Equal(t, `CREATE INDEX "sp_locations_geom" ON "locations" USING GIST ("geom")`, stmts[0])
+}
+
+func TestCompileCreate_WithFulltextAndRegularIndexes(t *testing.T) {
+	g := newGrammar()
+	bp := schema.NewBlueprint("posts")
+	bp.String("title", 255)
+	bp.String("slug", 255)
+	bp.Index("slug")
+	bp.FulltextIndex("title")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, `CREATE INDEX "idx_posts_slug" ON "posts" ("slug")`)
+	assert.Contains(t, sql, `CREATE INDEX "ft_posts_title" ON "posts" USING GIN (to_tsvector('english', "title"))`)
+}

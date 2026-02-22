@@ -4,20 +4,25 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/andrianprasetya/go-migration/internal/config"
 	"github.com/andrianprasetya/go-migration/internal/generator"
 	"github.com/andrianprasetya/go-migration/internal/logger"
 	"github.com/andrianprasetya/go-migration/pkg/cli"
 	"github.com/andrianprasetya/go-migration/pkg/cli/commands"
+	"github.com/andrianprasetya/go-migration/pkg/config"
 	"github.com/andrianprasetya/go-migration/pkg/database"
 	"github.com/andrianprasetya/go-migration/pkg/database/drivers"
 	"github.com/andrianprasetya/go-migration/pkg/migrator"
 	"github.com/andrianprasetya/go-migration/pkg/seeder"
 	"github.com/spf13/cobra"
+
+	// Database drivers - blank imports register them with database/sql.
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // commandsNeedingDB lists commands that require a database connection.
-// Commands not in this set (version, help, make:migration, make:seeder)
+// Commands not in this set (version, help, make:migration, make:seeder, make:factory)
 // skip the PersistentPreRunE setup entirely.
 var commandsNeedingDB = map[string]bool{
 	"migrate":          true,
@@ -28,6 +33,7 @@ var commandsNeedingDB = map[string]bool{
 	"migrate:status":   true,
 	"migrate:install":  true,
 	"db:seed":          true,
+	"db:seed:rollback": true,
 }
 
 func main() {
@@ -62,24 +68,29 @@ func run() error {
 		commands.NewMigrateInstallCommand(getCtx),
 		commands.NewMakeMigrationCommand(getCtx),
 		commands.NewMakeSeederCommand(getCtx),
+		commands.NewMakeFactoryCommand(getCtx),
 		commands.NewSeedCommand(getCtx),
+		commands.NewSeedRollbackCommand(getCtx),
 	)
 
 	// PersistentPreRunE initialises config, DB, and services for commands
 	// that need a database connection. Lightweight commands (version, help,
-	// make:migration, make:seeder) skip this entirely.
+	// make:migration, make:seeder, make:factory) skip this entirely.
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if !commandsNeedingDB[cmd.Name()] {
-			// For make:migration / make:seeder we still need the generator,
-			// so build a minimal context with just the generator.
-			if cmd.Name() == "make:migration" || cmd.Name() == "make:seeder" {
-				cfg, err := loadConfig(cmd)
+			// For make:migration / make:seeder / make:factory we still need
+			// the generator, so build a minimal context with just the generator.
+			if cmd.Name() == "make:migration" || cmd.Name() == "make:seeder" || cmd.Name() == "make:factory" {
+				cfg, err := loadConfigLightweight(cmd)
 				if err != nil {
 					return err
 				}
 				gen := generator.NewGenerator(cfg.MigrationDir)
 				if cmd.Name() == "make:seeder" {
 					gen = generator.NewGenerator(cfg.SeederDir)
+				}
+				if cmd.Name() == "make:factory" {
+					gen = generator.NewGenerator(cfg.FactoryDir)
 				}
 				cmdCtx = &commands.CommandContext{Generator: gen}
 			}
@@ -176,6 +187,24 @@ func loadConfig(cmd *cobra.Command) (*config.Config, error) {
 		return nil, err
 	}
 
+	return cfg, nil
+}
+
+// loadConfigLightweight reads config without validating database connections.
+// Used for generator-only commands (make:migration, make:seeder, make:factory).
+func loadConfigLightweight(cmd *cobra.Command) (*config.Config, error) {
+	configPath, _ := cmd.Flags().GetString("config")
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		// Fall back to environment variables.
+		cfg, err = config.LoadFromEnv()
+		if err != nil {
+			return nil, fmt.Errorf("load config: %w", err)
+		}
+	}
+
+	cfg.ApplyDefaults()
 	return cfg, nil
 }
 

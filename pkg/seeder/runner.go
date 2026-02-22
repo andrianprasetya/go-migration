@@ -9,8 +9,8 @@ import (
 
 // Logger defines a minimal logging interface for the seeder runner.
 type Logger interface {
-	Info(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
+	Info(msg string, args ...any)
+	Error(msg string, args ...any)
 }
 
 // Runner resolves seeder dependencies and executes seeders in the correct order.
@@ -79,6 +79,83 @@ func (r *Runner) Run(name string) error {
 		r.logInfo("Seeder %s completed", sName)
 	}
 
+	return nil
+}
+
+// RunByTag executes only seeders whose tags include the specified tag,
+// in dependency-resolved order. Seeders that do not implement TaggedSeeder
+// are skipped. Returns without error if no seeders match the tag.
+func (r *Runner) RunByTag(tag string) error {
+	all := r.registry.GetAll()
+	if len(all) == 0 {
+		return nil
+	}
+
+	// Filter for seeders implementing TaggedSeeder with matching tag
+	tagged := make(map[string]Seeder)
+	for name, s := range all {
+		if ts, ok := s.(TaggedSeeder); ok {
+			for _, t := range ts.Tags() {
+				if t == tag {
+					tagged[name] = s
+					break
+				}
+			}
+		}
+	}
+
+	if len(tagged) == 0 {
+		return nil
+	}
+
+	order, err := r.resolveAllOrder(tagged)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range order {
+		s := tagged[name]
+		r.logInfo("Running seeder: %s", name)
+		if err := s.Run(r.db); err != nil {
+			r.logError("Seeder %s failed: %v", name, err)
+			return fmt.Errorf("seeder %q: %w", name, err)
+		}
+		r.logInfo("Seeder %s completed", name)
+	}
+
+	return nil
+}
+
+// Rollback executes the named seeder's Rollback method.
+// Returns an error if the seeder is not found or does not implement RollbackableSeeder.
+func (r *Runner) Rollback(name string) error {
+	s, err := r.registry.Get(name)
+	if err != nil {
+		return err
+	}
+
+	rs, ok := s.(RollbackableSeeder)
+	if !ok {
+		return fmt.Errorf("seeder %q does not support rollback", name)
+	}
+
+	r.logInfo("Rolling back seeder: %s", name)
+	if err := rs.Rollback(r.db); err != nil {
+		r.logError("Seeder %s rollback failed: %v", name, err)
+		return fmt.Errorf("seeder %q rollback: %w", name, err)
+	}
+	r.logInfo("Seeder %s rolled back", name)
+	return nil
+}
+
+// Truncate deletes all rows from the specified table.
+// Uses DELETE FROM for broad database compatibility (including SQLite).
+func (r *Runner) Truncate(table string) error {
+	query := fmt.Sprintf(`DELETE FROM "%s"`, table)
+	_, err := r.db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("truncate table %q: %w", table, err)
+	}
 	return nil
 }
 
@@ -212,13 +289,13 @@ func buildCyclePath(path []string, target string) string {
 	return strings.Join(cycle, " -> ")
 }
 
-func (r *Runner) logInfo(msg string, args ...interface{}) {
+func (r *Runner) logInfo(msg string, args ...any) {
 	if r.logger != nil {
 		r.logger.Info(msg, args...)
 	}
 }
 
-func (r *Runner) logError(msg string, args ...interface{}) {
+func (r *Runner) logError(msg string, args ...any) {
 	if r.logger != nil {
 		r.logger.Error(msg, args...)
 	}

@@ -25,9 +25,17 @@ func NewSeedCommand(getCtx func() *CommandContext) *cobra.Command {
 			if class != "" {
 				return ctx.Seeder.Run(class)
 			}
+			tag, err := cmd.Flags().GetString("tag")
+			if err != nil {
+				return fmt.Errorf("invalid --tag flag: %w", err)
+			}
+			if tag != "" {
+				return ctx.Seeder.RunByTag(tag)
+			}
 			return ctx.Seeder.RunAll()
 		},
 	}
 	cmd.Flags().String("class", "", "specific seeder class to run")
+	cmd.Flags().String("tag", "", "run only seeders with the specified tag")
 	return cmd
 }

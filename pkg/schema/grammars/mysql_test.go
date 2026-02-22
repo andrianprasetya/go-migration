@@ -536,3 +536,217 @@ func TestMySQL_CompileCreate_Timestamps(t *testing.T) {
 		}
 	}
 }
+
+// --- New column type compilation tests ---
+
+func TestMySQL_CompileColumnType_Enum(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum, AllowedValues: []string{"active", "inactive", "pending"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "ENUM('active','inactive','pending')", result)
+}
+
+func TestMySQL_CompileColumnType_EnumSingleValue(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "role", Type: schema.TypeEnum, AllowedValues: []string{"admin"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "ENUM('admin')", result)
+}
+
+func TestMySQL_CompileColumnType_EnumWithQuotes(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "label", Type: schema.TypeEnum, AllowedValues: []string{"it's", "they're"}}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "ENUM('it''s','they''re')", result)
+}
+
+func TestMySQL_CompileColumnType_EnumEmpty(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum, AllowedValues: []string{}}
+	_, err := g.CompileColumnType(col)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enum column requires at least one allowed value")
+}
+
+func TestMySQL_CompileColumnType_EnumNilValues(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "status", Type: schema.TypeEnum}
+	_, err := g.CompileColumnType(col)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enum column requires at least one allowed value")
+}
+
+func TestMySQL_CompileColumnType_Char(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar, Length: 10}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "CHAR(10)", result)
+}
+
+func TestMySQL_CompileColumnType_CharDefaultLength(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "CHAR(255)", result)
+}
+
+func TestMySQL_CompileColumnType_CharZeroLength(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "code", Type: schema.TypeChar, Length: 0}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "CHAR(255)", result)
+}
+
+func TestMySQL_CompileColumnType_LongText(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "content", Type: schema.TypeLongText}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "LONGTEXT", result)
+}
+
+func TestMySQL_CompileColumnType_MediumText(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "description", Type: schema.TypeMediumText}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "MEDIUMTEXT", result)
+}
+
+func TestMySQL_CompileColumnType_TinyInt(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "priority", Type: schema.TypeTinyInt}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "TINYINT", result)
+}
+
+func TestMySQL_CompileColumnType_SmallInt(t *testing.T) {
+	g := newMySQLGrammar()
+	col := schema.ColumnDefinition{Name: "age", Type: schema.TypeSmallInt}
+	result, err := g.CompileColumnType(col)
+	require.NoError(t, err)
+	assert.Equal(t, "SMALLINT", result)
+}
+
+// --- New column types in CompileCreate ---
+
+func TestMySQL_CompileCreate_WithEnumColumn(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("users")
+	bp.String("name", 255)
+	bp.Enum("status", []string{"active", "inactive"})
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, "ENUM('active','inactive')")
+}
+
+func TestMySQL_CompileCreate_WithCharColumn(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("countries")
+	bp.Char("code", 2)
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, "`code` CHAR(2)")
+}
+
+func TestMySQL_CompileCreate_WithNewTextTypes(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.LongText("body")
+	bp.MediumText("summary")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, "LONGTEXT")
+	assert.Contains(t, sql, "MEDIUMTEXT")
+}
+
+func TestMySQL_CompileCreate_WithNewIntTypes(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("metrics")
+	bp.TinyInt("priority")
+	bp.SmallInt("score")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, "`priority` TINYINT")
+	assert.Contains(t, sql, "`score` SMALLINT")
+}
+
+// --- Fulltext and Spatial index tests ---
+
+func TestMySQL_CompileCreate_WithFulltextIndex(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.String("title", 255)
+	bp.FulltextIndex("title")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, "FULLTEXT KEY `ft_articles_title` (`title`)")
+}
+
+func TestMySQL_CompileCreate_WithSpatialIndex(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("locations")
+	bp.String("coords", 255)
+	bp.SpatialIndex("coords")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, "SPATIAL KEY `sp_locations_coords` (`coords`)")
+}
+
+func TestMySQL_CompileAlter_AddFulltextIndex(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.FulltextIndex("title")
+
+	stmts, err := g.CompileAlter(bp)
+	require.NoError(t, err)
+	require.Len(t, stmts, 1)
+	assert.Equal(t, "CREATE FULLTEXT INDEX `ft_articles_title` ON `articles` (`title`)", stmts[0])
+}
+
+func TestMySQL_CompileAlter_AddSpatialIndex(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("locations")
+	bp.SpatialIndex("coords")
+
+	stmts, err := g.CompileAlter(bp)
+	require.NoError(t, err)
+	require.Len(t, stmts, 1)
+	assert.Equal(t, "CREATE SPATIAL INDEX `sp_locations_coords` ON `locations` (`coords`)", stmts[0])
+}
+
+func TestMySQL_CompileCreate_WithMultiColumnFulltextIndex(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("articles")
+	bp.String("title", 255)
+	bp.Text("body")
+	bp.FulltextIndex("title", "body")
+
+	sql, err := g.CompileCreate(bp)
+	require.NoError(t, err)
+	assert.Contains(t, sql, "FULLTEXT KEY `ft_articles_title_body` (`title`, `body`)")
+}
+
+func TestMySQL_CompileAlter_AddMultiColumnSpatialIndex(t *testing.T) {
+	g := newMySQLGrammar()
+	bp := schema.NewBlueprint("locations")
+	bp.SpatialIndex("lat", "lng")
+
+	stmts, err := g.CompileAlter(bp)
+	require.NoError(t, err)
+	require.Len(t, stmts, 1)
+	assert.Equal(t, "CREATE SPATIAL INDEX `sp_locations_lat_lng` ON `locations` (`lat`, `lng`)", stmts[0])
+}
