@@ -7,6 +7,39 @@ import (
 	"strings"
 )
 
+// Dialect represents a database dialect for SQL generation differences.
+type Dialect int
+
+const (
+	// DialectPostgres uses $1, $2, ... numbered placeholders and double-quoted identifiers.
+	DialectPostgres Dialect = iota
+	// DialectMySQL uses ? positional placeholders and backtick-quoted identifiers.
+	DialectMySQL
+	// DialectSQLite uses ? positional placeholders and double-quoted identifiers.
+	DialectSQLite
+)
+
+// placeholder returns the appropriate placeholder string for the given dialect
+// and 1-based parameter index.
+func (d Dialect) placeholder(index int) string {
+	switch d {
+	case DialectPostgres:
+		return fmt.Sprintf("$%d", index)
+	default:
+		return "?"
+	}
+}
+
+// quoteIdent returns the identifier quoting style for the dialect.
+func (d Dialect) quoteIdent(name string) string {
+	switch d {
+	case DialectMySQL:
+		return "`" + name + "`"
+	default:
+		return `"` + name + `"`
+	}
+}
+
 // CreateMany inserts records into the specified table using multi-row INSERT
 // statements, each containing at most chunkSize rows. Records are provided as
 // []map[string]any where keys are column names and values are column values.
@@ -15,7 +48,19 @@ import (
 // SQL generation. All subsequent records must have the same set of keys.
 //
 // If chunkSize is zero or negative, a default of 500 is used.
+// Uses DialectPostgres by default. Use CreateManyWithDialect for other databases.
 func CreateMany(db *sql.DB, table string, records []map[string]any, chunkSize int) error {
+	return CreateManyWithDialect(db, table, records, chunkSize, DialectPostgres)
+}
+
+// CreateManyWithDialect inserts records using the specified database dialect
+// for placeholder and identifier quoting styles.
+//
+// Supported dialects:
+//   - DialectPostgres: $1, $2 placeholders, "double-quoted" identifiers
+//   - DialectMySQL: ? placeholders, `backtick-quoted` identifiers
+//   - DialectSQLite: ? placeholders, "double-quoted" identifiers
+func CreateManyWithDialect(db *sql.DB, table string, records []map[string]any, chunkSize int, dialect Dialect) error {
 	if len(records) == 0 {
 		return fmt.Errorf("no records to insert")
 	}
@@ -44,7 +89,7 @@ func CreateMany(db *sql.DB, table string, records []map[string]any, chunkSize in
 		}
 
 		chunk := records[start:end]
-		if err := insertChunk(db, table, columns, chunk); err != nil {
+		if err := insertChunk(db, table, columns, chunk, dialect); err != nil {
 			return fmt.Errorf("batch [%d:%d] failed: %w", start, end, err)
 		}
 	}
@@ -113,34 +158,36 @@ func keyMismatchError(index int, expected []string, record map[string]any) error
 }
 
 // insertChunk builds and executes a single multi-row INSERT statement.
-func insertChunk(db *sql.DB, table string, columns []string, records []map[string]any) error {
+func insertChunk(db *sql.DB, table string, columns []string, records []map[string]any, dialect Dialect) error {
 	if len(records) == 0 {
 		return nil
 	}
 
-	// Quote column names.
+	// Quote column names using dialect-appropriate style.
 	quotedCols := make([]string, len(columns))
 	for i, col := range columns {
-		quotedCols[i] = fmt.Sprintf(`"%s"`, col)
+		quotedCols[i] = dialect.quoteIdent(col)
 	}
 
 	// Build placeholder rows and collect values.
 	numCols := len(columns)
 	values := make([]any, 0, len(records)*numCols)
 	rows := make([]string, 0, len(records))
+	paramIdx := 1
 
 	for _, rec := range records {
 		placeholders := make([]string, numCols)
 		for j, col := range columns {
-			placeholders[j] = "?"
+			placeholders[j] = dialect.placeholder(paramIdx)
+			paramIdx++
 			values = append(values, rec[col])
 		}
 		rows = append(rows, "("+strings.Join(placeholders, ", ")+")")
 	}
 
 	query := fmt.Sprintf(
-		`INSERT INTO "%s" (%s) VALUES %s`,
-		table,
+		`INSERT INTO %s (%s) VALUES %s`,
+		dialect.quoteIdent(table),
 		strings.Join(quotedCols, ", "),
 		strings.Join(rows, ", "),
 	)
