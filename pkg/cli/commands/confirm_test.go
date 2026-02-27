@@ -4,11 +4,20 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/andrianprasetya/go-migration/pkg/migrator"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// stubMigrator is a minimal MigratorRunner for tests that need a non-nil Migrator.
+type stubMigrator struct{}
+
+func (stubMigrator) Up() error                              { return nil }
+func (stubMigrator) Rollback(int) error                     { return nil }
+func (stubMigrator) Reset() error                           { return nil }
+func (stubMigrator) Refresh() error                         { return nil }
+func (stubMigrator) Fresh() error                           { return nil }
+func (stubMigrator) Status() ([]MigrationStatusInfo, error) { return nil, nil }
 
 func TestConfirm_AcceptsY(t *testing.T) {
 	cmd := &cobra.Command{}
@@ -143,7 +152,7 @@ func TestMigrateFresh_ForceSkipsPrompt(t *testing.T) {
 
 func TestMigrateFresh_NoForcePromptsAndCancels(t *testing.T) {
 	cmd := NewMigrateFreshCommand(func() *CommandContext {
-		return &CommandContext{Migrator: migrator.New(nil)}
+		return &CommandContext{Migrator: stubMigrator{}}
 	})
 
 	stdin := bytes.NewBufferString("n\n")
@@ -178,7 +187,7 @@ func TestMigrateReset_ForceSkipsPrompt(t *testing.T) {
 
 func TestMigrateReset_NoForcePromptsAndCancels(t *testing.T) {
 	cmd := NewMigrateResetCommand(func() *CommandContext {
-		return &CommandContext{Migrator: migrator.New(nil)}
+		return &CommandContext{Migrator: stubMigrator{}}
 	})
 
 	stdin := bytes.NewBufferString("n\n")

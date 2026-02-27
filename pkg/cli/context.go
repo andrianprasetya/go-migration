@@ -6,8 +6,8 @@ import (
 
 	"github.com/andrianprasetya/go-migration/internal/generator"
 	"github.com/andrianprasetya/go-migration/internal/logger"
+	"github.com/andrianprasetya/go-migration/pkg/cli/commands"
 	"github.com/andrianprasetya/go-migration/pkg/config"
-	"github.com/andrianprasetya/go-migration/pkg/migrator"
 	"github.com/andrianprasetya/go-migration/pkg/seeder"
 )
 
@@ -16,14 +16,14 @@ import (
 type CLIContext struct {
 	Config    *config.Config
 	DB        *sql.DB
-	Migrator  *migrator.Migrator
+	Migrator  commands.MigratorRunner
 	Seeder    *seeder.Runner
 	Generator *generator.Generator
 	Logger    logger.Logger
 }
 
 // NewCLIContext creates a CLIContext with the given dependencies.
-func NewCLIContext(cfg *config.Config, db *sql.DB, m *migrator.Migrator, s *seeder.Runner, g *generator.Generator, l logger.Logger) *CLIContext {
+func NewCLIContext(cfg *config.Config, db *sql.DB, m commands.MigratorRunner, s *seeder.Runner, g *generator.Generator, l logger.Logger) *CLIContext {
 	return &CLIContext{
 		Config:    cfg,
 		DB:        db,

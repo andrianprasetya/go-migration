@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 
-	"github.com/andrianprasetya/go-migration/pkg/migrator"
 	"github.com/spf13/cobra"
 )
 
@@ -15,11 +14,10 @@ func NewMigrateInstallCommand(getCtx func() *CommandContext) *cobra.Command {
 		Short: "Create the migration tracking table",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := getCtx()
-			if ctx == nil || ctx.DB == nil {
+			if ctx == nil || ctx.TrackerEnsurer == nil {
 				return fmt.Errorf("database connection not initialized")
 			}
-			tracker := migrator.NewTracker(ctx.DB, "migrations")
-			return tracker.EnsureTable()
+			return ctx.TrackerEnsurer.EnsureTable()
 		},
 	}
 }

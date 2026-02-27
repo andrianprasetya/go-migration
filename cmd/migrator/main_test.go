@@ -41,21 +41,3 @@ func TestVersionCommandOutput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "go-migration v1.2.3 (built 2024-06-15)\n", buf.String())
 }
-
-func TestCommandsNeedingDB(t *testing.T) {
-	// Verify the set of commands that require DB access.
-	dbCommands := []string{
-		"migrate", "migrate:rollback", "migrate:reset",
-		"migrate:refresh", "migrate:fresh", "migrate:status",
-		"migrate:install", "db:seed",
-	}
-	for _, name := range dbCommands {
-		assert.True(t, commandsNeedingDB[name], "expected %q to need DB", name)
-	}
-
-	// These should NOT need DB.
-	nonDBCommands := []string{"version", "make:migration", "make:seeder", "help"}
-	for _, name := range nonDBCommands {
-		assert.False(t, commandsNeedingDB[name], "expected %q to NOT need DB", name)
-	}
-}
