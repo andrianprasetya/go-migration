@@ -8,7 +8,7 @@ import (
 
 // NewMigrateCommand creates the "migrate" command that runs all pending migrations.
 func NewMigrateCommand(getCtx func() *CommandContext) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Run all pending migrations",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -19,4 +19,6 @@ func NewMigrateCommand(getCtx func() *CommandContext) *cobra.Command {
 			return ctx.Migrator.Up()
 		},
 	}
+	cmd.Flags().Bool("dry-run", false, "Show SQL without executing")
+	return cmd
 }

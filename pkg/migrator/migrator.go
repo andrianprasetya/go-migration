@@ -3,6 +3,7 @@ package migrator
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/andrianprasetya/go-migration/pkg/schema"
@@ -33,15 +34,17 @@ type ProgressEvent struct {
 type ProgressFunc func(event ProgressEvent)
 
 type Migrator struct {
-	db         *sql.DB
-	registry   *Registry
-	runner     *Runner
-	tracker    *Tracker
-	batch      *BatchManager
-	hooks      *HookManager
-	grammar    schema.Grammar
-	logger     Logger
-	progressFn ProgressFunc
+	db           *sql.DB
+	registry     *Registry
+	runner       *Runner
+	tracker      *Tracker
+	batch        *BatchManager
+	hooks        *HookManager
+	grammar      schema.Grammar
+	logger       Logger
+	progressFn   ProgressFunc
+	dryRun       bool
+	dryRunWriter io.Writer
 }
 
 // Option configures a Migrator.
@@ -92,6 +95,15 @@ func WithProgress(fn ProgressFunc) Option {
 	}
 }
 
+// WithDryRun enables dry-run mode: SQL statements are written to w
+// instead of being executed against the database.
+func WithDryRun(w io.Writer) Option {
+	return func(m *Migrator) {
+		m.dryRun = true
+		m.dryRunWriter = w
+	}
+}
+
 // New creates a new Migrator with the given database connection and options.
 // Defaults: table name "migrations", nil grammar, nil logger.
 func New(db *sql.DB, opts ...Option) *Migrator {
@@ -111,6 +123,11 @@ func New(db *sql.DB, opts ...Option) *Migrator {
 	// Ensure runner exists even if no grammar option was provided.
 	if m.runner == nil {
 		m.runner = NewRunner(db, m.grammar, m.logger)
+	}
+
+	// Propagate dry-run settings to the runner.
+	if m.dryRun && m.dryRunWriter != nil {
+		m.runner.SetDryRun(m.dryRunWriter)
 	}
 
 	return m
@@ -187,12 +204,20 @@ func (m *Migrator) Up() error {
 
 		start := time.Now()
 
-		if err := m.runner.Execute(p.Migration, "up"); err != nil {
-			return fmt.Errorf("migration %q up: %w", p.Name, err)
+		if m.dryRun {
+			if err := m.runner.ExecuteDryRun(p.Migration, "up", p.Name); err != nil {
+				return fmt.Errorf("migration %q up: %w", p.Name, err)
+			}
+		} else {
+			if err := m.runner.Execute(p.Migration, "up", p.Name); err != nil {
+				return fmt.Errorf("migration %q up: %w", p.Name, err)
+			}
 		}
 
-		if err := m.tracker.Record(p.Name, batchNumber); err != nil {
-			return err
+		if !m.dryRun {
+			if err := m.tracker.Record(p.Name, batchNumber); err != nil {
+				return err
+			}
 		}
 
 		duration := time.Since(start)
@@ -255,12 +280,20 @@ func (m *Migrator) Rollback(steps int) error {
 
 		start := time.Now()
 
-		if err := m.runner.Execute(migration, "down"); err != nil {
-			return fmt.Errorf("migration %q down: %w", rec.Name, err)
+		if m.dryRun {
+			if err := m.runner.ExecuteDryRun(migration, "down", rec.Name); err != nil {
+				return fmt.Errorf("migration %q down: %w", rec.Name, err)
+			}
+		} else {
+			if err := m.runner.Execute(migration, "down", rec.Name); err != nil {
+				return fmt.Errorf("migration %q down: %w", rec.Name, err)
+			}
 		}
 
-		if err := m.tracker.Remove(rec.Name); err != nil {
-			return err
+		if !m.dryRun {
+			if err := m.tracker.Remove(rec.Name); err != nil {
+				return err
+			}
 		}
 
 		duration := time.Since(start)
@@ -303,12 +336,20 @@ func (m *Migrator) Reset() error {
 
 		start := time.Now()
 
-		if err := m.runner.Execute(migration, "down"); err != nil {
-			return fmt.Errorf("migration %q down: %w", rec.Name, err)
+		if m.dryRun {
+			if err := m.runner.ExecuteDryRun(migration, "down", rec.Name); err != nil {
+				return fmt.Errorf("migration %q down: %w", rec.Name, err)
+			}
+		} else {
+			if err := m.runner.Execute(migration, "down", rec.Name); err != nil {
+				return fmt.Errorf("migration %q down: %w", rec.Name, err)
+			}
 		}
 
-		if err := m.tracker.Remove(rec.Name); err != nil {
-			return err
+		if !m.dryRun {
+			if err := m.tracker.Remove(rec.Name); err != nil {
+				return err
+			}
 		}
 
 		duration := time.Since(start)
@@ -347,8 +388,13 @@ func (m *Migrator) Fresh() error {
 	}
 
 	dropSQL := m.grammar.CompileDropAllTables()
-	if _, err := m.db.Exec(dropSQL); err != nil {
-		return fmt.Errorf("drop all tables: %w", err)
+
+	if m.dryRun {
+		fmt.Fprintf(m.dryRunWriter, "-- Fresh: drop all tables\n%s;\n", dropSQL)
+	} else {
+		if _, err := m.db.Exec(dropSQL); err != nil {
+			return fmt.Errorf("drop all tables: %w", err)
+		}
 	}
 
 	return m.Up()

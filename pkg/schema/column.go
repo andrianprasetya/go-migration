@@ -96,6 +96,16 @@ func (cd *ColumnDefinition) Default(value any) *ColumnDefinition {
 	return cd
 }
 
+// DefaultRaw sets the default value for the column to a raw SQL expression.
+// If expression is empty, the default value is not changed.
+func (cd *ColumnDefinition) DefaultRaw(expression string) *ColumnDefinition {
+	if expression == "" {
+		return cd
+	}
+	cd.DefaultValue = RawExpression{Expression: expression}
+	return cd
+}
+
 // Primary marks the column as a primary key.
 func (cd *ColumnDefinition) Primary() *ColumnDefinition {
 	cd.IsPrimary = true

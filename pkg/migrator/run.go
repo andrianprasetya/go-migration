@@ -182,11 +182,19 @@ func run() error {
 			return fmt.Errorf("get default connection: %w", err)
 		}
 
-		// Create Migrator with auto-discover.
-		m := New(db,
+		// Build Migrator options.
+		opts := []Option{
 			WithTableName(cfg.MigrationTable),
 			WithLogger(log),
-		)
+		}
+
+		// Enable dry-run mode if the command has --dry-run flag set.
+		if dryRun, _ := cmd.Flags().GetBool("dry-run"); dryRun {
+			opts = append(opts, WithDryRun(os.Stdout))
+		}
+
+		// Create Migrator with auto-discover.
+		m := New(db, opts...)
 
 		// Auto-discover migrations from global auto-registry.
 		autoMigrations := GetAutoRegistered()

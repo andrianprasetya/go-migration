@@ -1,6 +1,7 @@
 package migrator
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -183,5 +184,92 @@ func TestExecuteInTransaction_BeginError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "begin transaction")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// --- Dry-run tests ---
+
+// createTableMigration creates a table in Up and drops it in Down.
+type createTableMigration struct{}
+
+func (m *createTableMigration) Up(b *schema.Builder) error {
+	return b.Create("users", func(bp *schema.Blueprint) {
+		bp.String("name", 255)
+	})
+}
+
+func (m *createTableMigration) Down(b *schema.Builder) error {
+	return b.Drop("users")
+}
+
+func TestExecuteDryRun_WritesSQL_NoTransaction(t *testing.T) {
+	db, mock := newMockDB(t)
+	defer db.Close()
+
+	var buf bytes.Buffer
+	runner := NewRunner(db, &mockGrammar{}, nil)
+	runner.SetDryRun(&buf)
+
+	m := &noopMigration{}
+	err := runner.Execute(m, "up")
+
+	assert.NoError(t, err)
+	assert.True(t, m.upCalled)
+	// No Begin/Commit should have been called on the mock DB.
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestExecuteDryRun_WritesMigrationNamePrefix(t *testing.T) {
+	db, mock := newMockDB(t)
+	defer db.Close()
+
+	var buf bytes.Buffer
+	runner := NewRunner(db, &mockGrammar{}, nil)
+	runner.SetDryRun(&buf)
+
+	m := &createTableMigration{}
+	err := runner.ExecuteDryRun(m, "up", "20240101_create_users")
+
+	assert.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, "-- Migration: 20240101_create_users")
+	assert.Contains(t, output, "CREATE TABLE")
+	// No DB interactions expected.
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestExecuteDryRun_Down_WritesDropSQL(t *testing.T) {
+	db, mock := newMockDB(t)
+	defer db.Close()
+
+	var buf bytes.Buffer
+	runner := NewRunner(db, &mockGrammar{}, nil)
+	runner.SetDryRun(&buf)
+
+	m := &createTableMigration{}
+	err := runner.ExecuteDryRun(m, "down", "20240101_create_users")
+
+	assert.NoError(t, err)
+	output := buf.String()
+	assert.Contains(t, output, "-- Migration: 20240101_create_users")
+	assert.Contains(t, output, "DROP TABLE")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestExecuteDryRun_NoTransactionCommitted(t *testing.T) {
+	db, mock := newMockDB(t)
+	defer db.Close()
+
+	var buf bytes.Buffer
+	runner := NewRunner(db, &mockGrammar{}, nil)
+	runner.SetDryRun(&buf)
+
+	// Even a migration that would normally use transactions should not
+	// start any transaction in dry-run mode.
+	m := &noopMigration{}
+	err := runner.Execute(m, "up")
+
+	assert.NoError(t, err)
+	// mock has no expectations set — if Begin/Commit were called, it would fail.
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

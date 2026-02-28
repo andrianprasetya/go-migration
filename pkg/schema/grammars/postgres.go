@@ -302,6 +302,8 @@ func quoteSlice(names []string) []string {
 // formatDefault formats a default value for SQL.
 func formatDefault(value any) string {
 	switch v := value.(type) {
+	case schema.RawExpression:
+		return v.Expression
 	case string:
 		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
 	case bool:

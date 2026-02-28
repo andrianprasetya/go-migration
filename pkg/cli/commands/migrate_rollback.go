@@ -26,5 +26,6 @@ func NewMigrateRollbackCommand(getCtx func() *CommandContext) *cobra.Command {
 		},
 	}
 	cmd.Flags().Int("step", 0, "number of migrations to roll back (0 = last batch)")
+	cmd.Flags().Bool("dry-run", false, "Show SQL without executing")
 	return cmd
 }

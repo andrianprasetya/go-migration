@@ -9,7 +9,7 @@ import (
 // NewMigrateRefreshCommand creates the "migrate:refresh" command
 // that resets all migrations and re-runs them.
 func NewMigrateRefreshCommand(getCtx func() *CommandContext) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "migrate:refresh",
 		Short: "Reset and re-run all migrations",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -20,4 +20,6 @@ func NewMigrateRefreshCommand(getCtx func() *CommandContext) *cobra.Command {
 			return ctx.Migrator.Refresh()
 		},
 	}
+	cmd.Flags().Bool("dry-run", false, "Show SQL without executing")
+	return cmd
 }

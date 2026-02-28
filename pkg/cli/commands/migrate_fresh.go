@@ -35,6 +35,7 @@ func NewMigrateFreshCommand(getCtx func() *CommandContext) *cobra.Command {
 	}
 
 	cmd.Flags().Bool("force", false, "Force the operation to run without confirmation")
+	cmd.Flags().Bool("dry-run", false, "Show SQL without executing")
 
 	return cmd
 }

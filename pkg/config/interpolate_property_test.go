@@ -15,7 +15,9 @@ import (
 // to avoid collisions with real system env vars.
 func genEnvVarName() *rapid.Generator[string] {
 	return rapid.Custom(func(t *rapid.T) string {
-		suffix := rapid.StringMatching(`[A-Za-z][A-Za-z0-9_]{0,12}`).Draw(t, "suffix")
+		// Use uppercase-only names to avoid case-insensitive collisions on Windows,
+		// where env var names like "GOMIG_TEST_d" and "GOMIG_TEST_D" are identical.
+		suffix := rapid.StringMatching(`[A-Z][A-Z0-9_]{0,12}`).Draw(t, "suffix")
 		return "GOMIG_TEST_" + suffix
 	})
 }
@@ -36,8 +38,10 @@ func genUniqueEnvVarNames(minN, maxN int) *rapid.Generator[[]string] {
 		names := make([]string, 0, n)
 		for len(names) < n {
 			name := genEnvVarName().Draw(t, "varName")
-			if !seen[name] {
-				seen[name] = true
+			// Use case-folded key for uniqueness check (Windows env vars are case-insensitive)
+			upper := strings.ToUpper(name)
+			if !seen[upper] {
+				seen[upper] = true
 				names = append(names, name)
 			}
 		}
