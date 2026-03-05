@@ -110,6 +110,7 @@ func run() error {
 
 	// --- Command registration (task 6.2 will expand this) ---
 	root.AddCommand(
+		commands.NewInitCommand(),
 		commands.NewMigrateCommand(getCtx),
 		commands.NewMigrateRollbackCommand(getCtx),
 		commands.NewMigrateResetCommand(getCtx),

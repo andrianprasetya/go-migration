@@ -53,7 +53,7 @@ func TestAutoRegistryProperty2_InvalidNamePanicWithDescriptiveMessage(t *testing
 		invalidName := invalidMigrationNameGen().Draw(t, "invalidName")
 
 		assert.PanicsWithValue(t,
-			"AutoRegister: migration name \""+invalidName+"\" is invalid (expected YYYYMMDDHHMMSS_description)",
+			"AutoRegister: migration name \""+invalidName+"\" is invalid (expected YYYYMMDDHHMMSS_description or YYYY_MM_DD_HHMMSS_RRRR_description)",
 			func() {
 				AutoRegister(invalidName, &stubMigration{})
 			},

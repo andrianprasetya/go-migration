@@ -20,7 +20,7 @@ var defaultAutoRegistry = &autoRegistry{
 // Panics if the name is invalid or duplicate (fail-fast at startup).
 func AutoRegister(name string, m Migration) {
 	if !namePattern.MatchString(name) {
-		panic(fmt.Sprintf("AutoRegister: migration name %q is invalid (expected YYYYMMDDHHMMSS_description)", name))
+		panic(fmt.Sprintf("AutoRegister: migration name %q is invalid (expected YYYYMMDDHHMMSS_description or YYYY_MM_DD_HHMMSS_RRRR_description)", name))
 	}
 	for _, existing := range defaultAutoRegistry.migrations {
 		if existing.Name == name {

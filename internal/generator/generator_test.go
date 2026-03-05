@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fixedTime returns a generator with a fixed timestamp for deterministic filenames.
+// fixedTimeGenerator returns a generator with a fixed timestamp and deterministic
+// random number for reproducible filenames.
 func fixedTimeGenerator(t *testing.T) (*Generator, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -19,6 +20,7 @@ func fixedTimeGenerator(t *testing.T) (*Generator, string) {
 	g.nowFunc = func() time.Time {
 		return time.Date(2024, 7, 15, 10, 30, 45, 0, time.UTC)
 	}
+	g.randFunc = func(n int) int { return 1234 }
 	return g, dir
 }
 
@@ -28,7 +30,7 @@ func TestMigration_BasicFile(t *testing.T) {
 	path, err := g.Migration("create_users", MigrationOptions{})
 	require.NoError(t, err)
 
-	assert.Equal(t, filepath.Join(dir, "20240715103045_create_users.go"), path)
+	assert.Equal(t, filepath.Join(dir, "2024_07_15_103045_1234_create_users.go"), path)
 
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -95,9 +97,9 @@ func TestMigration_FilenameFormat(t *testing.T) {
 	require.NoError(t, err)
 
 	filename := filepath.Base(path)
-	// Should match YYYYMMDDHHMMSS_description.go
+	// Should match YYYY_MM_DD_HHMMSS_RRRR_description.go
 	assert.True(t, strings.HasSuffix(filename, ".go"))
-	assert.Equal(t, "20240715103045_create_products.go", filename)
+	assert.Equal(t, "2024_07_15_103045_1234_create_products.go", filename)
 }
 
 func TestSeeder_FilenameFormat(t *testing.T) {

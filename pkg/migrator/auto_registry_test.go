@@ -35,7 +35,7 @@ func TestAutoRegister_InvalidNamePanics(t *testing.T) {
 	defer ResetAutoRegistry()
 
 	assert.PanicsWithValue(t,
-		`AutoRegister: migration name "bad-name" is invalid (expected YYYYMMDDHHMMSS_description)`,
+		`AutoRegister: migration name "bad-name" is invalid (expected YYYYMMDDHHMMSS_description or YYYY_MM_DD_HHMMSS_RRRR_description)`,
 		func() { AutoRegister("bad-name", &stubMigration{}) },
 	)
 }

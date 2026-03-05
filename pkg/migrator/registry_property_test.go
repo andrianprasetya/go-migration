@@ -9,11 +9,18 @@ import (
 	"pgregory.net/rapid"
 )
 
-// validMigrationNameGen generates names matching ^\d{14}_[a-z][a-z0-9_]*$
+// validMigrationNameGen generates names matching both legacy and new formats:
+//   - Legacy: ^\d{14}_[a-z][a-z0-9_]*$
+//   - New:    ^\d{4}_\d{2}_\d{2}_\d{6}_\d{4}_[a-z][a-z0-9_]*$
 func validMigrationNameGen() *rapid.Generator[string] {
 	return rapid.Custom(func(t *rapid.T) string {
-		timestamp := rapid.StringMatching(`\d{14}`).Draw(t, "timestamp")
 		desc := rapid.StringMatching(`[a-z][a-z0-9_]{0,20}`).Draw(t, "desc")
+		useNewFormat := rapid.Bool().Draw(t, "useNewFormat")
+		if useNewFormat {
+			prefix := rapid.StringMatching(`\d{4}_\d{2}_\d{2}_\d{6}_\d{4}`).Draw(t, "newPrefix")
+			return prefix + "_" + desc
+		}
+		timestamp := rapid.StringMatching(`\d{14}`).Draw(t, "timestamp")
 		return timestamp + "_" + desc
 	})
 }

@@ -1,0 +1,16 @@
+default: "default"
+
+connections:
+  default:
+    driver: "mysql"
+    host: "${DB_HOST}"
+    port: 3306
+    database: "${DB_DATABASE}"
+    username: "${DB_USERNAME}"
+    password: "${DB_PASSWORD}"
+
+migration_dir: "migrations"
+seeder_dir: "seeders"
+factory_dir: "factories"
+migration_table: "migrations"
+log_level: "info"

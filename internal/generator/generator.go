@@ -5,6 +5,7 @@ package generator
 import (
 	"embed"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,8 +27,9 @@ type MigrationOptions struct {
 
 // templateData holds the data passed to templates.
 type templateData struct {
-	StructName string
-	TableName  string
+	StructName    string
+	TableName     string
+	MigrationName string // e.g., "2024_02_15_120405_4827_create_users_table"
 }
 
 // Generator generates migration and seeder files from templates.
@@ -35,6 +37,8 @@ type Generator struct {
 	outputDir string
 	// nowFunc allows overriding time for testing.
 	nowFunc func() time.Time
+	// randFunc allows overriding random number generation for testing.
+	randFunc func(int) int
 }
 
 // NewGenerator creates a new Generator that writes files to outputDir.
@@ -42,20 +46,23 @@ func NewGenerator(outputDir string) *Generator {
 	return &Generator{
 		outputDir: outputDir,
 		nowFunc:   time.Now,
+		randFunc:  rand.Intn,
 	}
 }
 
 // Migration generates a migration file and returns the full filepath.
-// The filename follows the pattern YYYYMMDDHHMMSS_description.go.
+// The filename follows the pattern YYYY_MM_DD_HHMMSS_RRRR_description.go.
 // The opts parameter controls whether the template includes pre-populated
 // Schema_Builder calls for --create or --table flags.
 func (g *Generator) Migration(description string, opts MigrationOptions) (string, error) {
-	timestamp := g.nowFunc().Format("20060102150405")
-	filename := fmt.Sprintf("%s_%s.go", timestamp, description)
+	timestamp := g.nowFunc().Format("2006_01_02_150405")
+	random := fmt.Sprintf("%04d", g.randFunc(10000))
+	filename := fmt.Sprintf("%s_%s_%s.go", timestamp, random, description)
+	migrationName := strings.TrimSuffix(filename, ".go")
 	structName := toStructName(description)
 
 	tmplName := "templates/migration.go.tmpl"
-	data := templateData{StructName: structName}
+	data := templateData{StructName: structName, MigrationName: migrationName}
 
 	if opts.CreateTable != "" {
 		tmplName = "templates/migration_create.go.tmpl"

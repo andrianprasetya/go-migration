@@ -6,9 +6,10 @@ import (
 	"sort"
 )
 
-// namePattern validates migration names: 14-digit timestamp + underscore + lowercase description.
-// Example: "20240215120000_create_users_table"
-var namePattern = regexp.MustCompile(`^\d{14}_[a-z][a-z0-9_]*$`)
+// namePattern validates migration names in both legacy and Laravel-style formats:
+//   - Legacy:  "20240215120000_create_users_table"  (14-digit timestamp + description)
+//   - New:     "2024_02_15_120405_4827_create_users_table"  (YYYY_MM_DD_HHMMSS_RRRR + description)
+var namePattern = regexp.MustCompile(`^(\d{14}|\d{4}_\d{2}_\d{2}_\d{6}_\d{4})_[a-z][a-z0-9_]*$`)
 
 // registeredMigration pairs a migration name with its implementation.
 type registeredMigration struct {
@@ -29,7 +30,7 @@ func NewRegistry() *Registry {
 }
 
 // Register adds a migration with the given name to the registry.
-// Names must match the pattern YYYYMMDDHHMMSS_description and be unique.
+// Names must match YYYYMMDDHHMMSS_description or YYYY_MM_DD_HHMMSS_RRRR_description and be unique.
 func (r *Registry) Register(name string, m Migration) error {
 	if !namePattern.MatchString(name) {
 		return fmt.Errorf("migration name %q: %w", name, ErrInvalidMigrationName)

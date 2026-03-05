@@ -47,19 +47,20 @@ func TestProperty31_GeneratedMigrationFilesContainValidScaffolding(t *testing.T)
 		fixedTime := time.Date(2024, 6, 15, 10, 30, 45, 0, time.UTC)
 		gen := NewGenerator(dir)
 		gen.nowFunc = func() time.Time { return fixedTime }
+		gen.randFunc = func(n int) int { return 5678 }
 
 		outPath, err := gen.Migration(description, MigrationOptions{})
 		require.NoError(t, err, "Migration generation should succeed")
 
-		// Verify filename pattern: YYYYMMDDHHMMSS_description.go
+		// Verify filename pattern: YYYY_MM_DD_HHMMSS_RRRR_description.go
 		filename := filepath.Base(outPath)
-		filenamePattern := regexp.MustCompile(`^\d{14}_` + regexp.QuoteMeta(description) + `\.go$`)
+		filenamePattern := regexp.MustCompile(`^\d{4}_\d{2}_\d{2}_\d{6}_\d{4}_` + regexp.QuoteMeta(description) + `\.go$`)
 		assert.Regexp(t, filenamePattern, filename,
-			"Filename should match YYYYMMDDHHMMSS_description.go pattern")
+			"Filename should match YYYY_MM_DD_HHMMSS_RRRR_description.go pattern")
 
 		// Verify timestamp prefix
-		assert.True(t, strings.HasPrefix(filename, "20240615103045_"),
-			"Filename should start with the correct timestamp")
+		assert.True(t, strings.HasPrefix(filename, "2024_06_15_103045_5678_"),
+			"Filename should start with the correct timestamp and random segment")
 
 		// Read generated content
 		content, err := os.ReadFile(outPath)
@@ -146,6 +147,7 @@ func TestProperty33_CreateFlagPrePopulatesSchemaCreateCall(t *testing.T) {
 
 		gen := NewGenerator(dir)
 		gen.nowFunc = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+		gen.randFunc = func(n int) int { return 0 }
 
 		outPath, err := gen.Migration(description, MigrationOptions{
 			CreateTable: tableName,
@@ -187,6 +189,7 @@ func TestProperty34_TableFlagPrePopulatesSchemaAlterCall(t *testing.T) {
 
 		gen := NewGenerator(dir)
 		gen.nowFunc = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+		gen.randFunc = func(n int) int { return 0 }
 
 		outPath, err := gen.Migration(description, MigrationOptions{
 			AlterTable: tableName,
